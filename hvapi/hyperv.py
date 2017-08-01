@@ -55,8 +55,210 @@ class VirtualSwitch(ManagementObjectHolder):
       return self.id == other.id and self.name == other.name
 
   @classmethod
-  def from_moh(cls, moh: ManagementObjectHolder) -> 'VirtualSwitch':
-    return cls._create_cls_from_moh(cls, 'Msvm_VirtualEthernetSwitch', moh)
+  def from_moh(cls, moh: ManagementObjectHolder, parent_moh: ManagementObjectHolder = None) -> 'VirtualSwitch':
+    return cls._create_cls_from_moh(cls, 'Msvm_VirtualEthernetSwitch', moh, parent_moh)
+
+
+"""
+PowerShell
+
+Function Set-VMNetworkConfiguration {
+    [CmdletBinding()]
+    Param (
+        [Parameter(Mandatory=$true,
+                   Position=1,
+                   ParameterSetName='DHCP',
+                   ValueFromPipeline=$true)]
+        [Parameter(Mandatory=$true,
+                   Position=0,
+                   ParameterSetName='Static',
+                   ValueFromPipeline=$true)]
+        [Microsoft.HyperV.PowerShell.VMNetworkAdapter]$NetworkAdapter,
+
+        [Parameter(Mandatory=$true,
+                   Position=1,
+                   ParameterSetName='Static')]
+        [String[]]$IPAddress=@(),
+
+        [Parameter(Mandatory=$false,
+                   Position=2,
+                   ParameterSetName='Static')]
+        [String[]]$Subnet=@(),
+
+        [Parameter(Mandatory=$false,
+                   Position=3,
+                   ParameterSetName='Static')]
+        [String[]]$DefaultGateway = @(),
+
+        [Parameter(Mandatory=$false,
+                   Position=4,
+                   ParameterSetName='Static')]
+        [String[]]$DNSServer = @(),
+
+        [Parameter(Mandatory=$false,
+                   Position=0,
+                   ParameterSetName='DHCP')]
+        [Switch]$Dhcp
+    )
+
+    $VM = Get-WmiObject -Namespace 'root\virtualization\v2' -Class 'Msvm_ComputerSystem' | Where-Object { $_.ElementName -eq $NetworkAdapter.VMName } 
+    $VMSettings = $vm.GetRelated('Msvm_VirtualSystemSettingData') | Where-Object { $_.VirtualSystemType -eq 'Microsoft:Hyper-V:System:Realized' }    
+    $VMNetAdapters = $VMSettings.GetRelated('Msvm_SyntheticEthernetPortSettingData') 
+
+    $NetworkSettings = @()
+    foreach ($NetAdapter in $VMNetAdapters) {
+        if ($NetAdapter.Address -eq $NetworkAdapter.MacAddress) {
+            $NetworkSettings = $NetworkSettings + $NetAdapter.GetRelated("Msvm_GuestNetworkAdapterConfiguration")
+        }
+    }
+
+    $NetworkSettings[0].IPAddresses = $IPAddress
+    $NetworkSettings[0].Subnets = $Subnet
+    $NetworkSettings[0].DefaultGateways = $DefaultGateway
+    $NetworkSettings[0].DNSServers = $DNSServer
+    $NetworkSettings[0].ProtocolIFType = 4096
+
+    if ($dhcp) {
+        $NetworkSettings[0].DHCPEnabled = $true
+    } else {
+        $NetworkSettings[0].DHCPEnabled = $false
+    }
+
+    $Service = Get-WmiObject -Class "Msvm_VirtualSystemManagementService" -Namespace "root\virtualization\v2"
+    $setIP = $Service.SetGuestNetworkAdapterConfiguration($VM, $NetworkSettings[0].GetText(1))
+
+    if ($setip.ReturnValue -eq 4096) {
+        $job=[WMI]$setip.job 
+
+        while ($job.JobState -eq 3 -or $job.JobState -eq 4) {
+            start-sleep 1
+            $job=[WMI]$setip.job
+        }
+
+        if ($job.JobState -eq 7) {
+            write-host "Success"
+        }
+        else {
+            $job.GetError()
+        }
+    } elseif($setip.ReturnValue -eq 0) {
+        Write-Host "Success"
+    }
+}
+
+Function Set-VMNetworkConfiguration {
+    [CmdletBinding()]
+    Param (
+        [Parameter(Mandatory=$true,
+                   Position=1,
+                   ParameterSetName='DHCP',
+                   ValueFromPipeline=$true)]
+        [Parameter(Mandatory=$true,
+                   Position=0,
+                   ParameterSetName='Static',
+                   ValueFromPipeline=$true)]
+        [Microsoft.HyperV.PowerShell.VMNetworkAdapter]$NetworkAdapter,
+ 
+        [Parameter(Mandatory=$true,
+                   Position=1,
+                   ParameterSetName='Static')]
+        [String[]]$IPAddress=@(),
+ 
+        [Parameter(Mandatory=$false,
+                   Position=2,
+                   ParameterSetName='Static')]
+        [String[]]$Subnet=@(),
+ 
+        [Parameter(Mandatory=$false,
+                   Position=3,
+                   ParameterSetName='Static')]
+        [String[]]$DefaultGateway = @(),
+ 
+        [Parameter(Mandatory=$false,
+                   Position=4,
+                   ParameterSetName='Static')]
+        [String[]]$DNSServer = @(),
+ 
+        [Parameter(Mandatory=$false,
+                   Position=0,
+                   ParameterSetName='DHCP')]
+        [Switch]$Dhcp
+    )
+ 
+    $VM = Get-WmiObject -Namespace 'root\virtualization\v2' -Class 'Msvm_ComputerSystem' | Where-Object { $_.ElementName -eq $NetworkAdapter.VMName } 
+    $VMSettings = $vm.GetRelated('Msvm_VirtualSystemSettingData') | Where-Object { $_.VirtualSystemType -eq 'Microsoft:Hyper-V:System:Realized' }    
+    $VMNetAdapters = $VMSettings.GetRelated('Msvm_SyntheticEthernetPortSettingData') 
+ 
+    $NetworkSettings = @()
+    foreach ($NetAdapter in $VMNetAdapters) {
+        if ($NetAdapter.Address -eq $NetworkAdapter.MacAddress) {
+            $NetworkSettings = $NetworkSettings + $NetAdapter.GetRelated("Msvm_GuestNetworkAdapterConfiguration")
+        }
+    }
+ 
+    $NetworkSettings[0].IPAddresses = $IPAddress
+    $NetworkSettings[0].Subnets = $Subnet
+    $NetworkSettings[0].DefaultGateways = $DefaultGateway
+    $NetworkSettings[0].DNSServers = $DNSServer
+    $NetworkSettings[0].ProtocolIFType = 4096
+ 
+    if ($dhcp) {
+        $NetworkSettings[0].DHCPEnabled = $true
+    } else {
+        $NetworkSettings[0].DHCPEnabled = $false
+    }
+ 
+    $Service = Get-WmiObject -Class "Msvm_VirtualSystemManagementService" -Namespace "root\virtualization\v2"
+    $setIP = $Service.SetGuestNetworkAdapterConfiguration($VM, $NetworkSettings[0].GetText(1))
+ 
+    if ($setip.ReturnValue -eq 4096) {
+        $job=[WMI]$setip.job 
+ 
+        while ($job.JobState -eq 3 -or $job.JobState -eq 4) {
+            start-sleep 1
+            $job=[WMI]$setip.job
+        }
+ 
+        if ($job.JobState -eq 7) {
+            write-host "Success"
+        }
+        else {
+            $job.GetError()
+        }
+    } elseif($setip.ReturnValue -eq 0) {
+        Write-Host "Success"
+    }
+}
+"""
+
+
+class AdapterGuestSettings(ManagementObjectHolder):
+  """
+  Class for managing virtual adapter guest settings. Can be used to inject static or dhcp ip settings.
+  """
+
+  @property
+  def dhcp(self):
+    return self.properties['DHCPEnabled']
+
+  @dhcp.setter
+  def dhcp(self, value):
+    # todo fail on running machine
+    management_service = VirtualSystemManagementService.from_moh(
+      self.scope_holder.query_one('SELECT * FROM Msvm_VirtualSystemManagementService')
+    )
+    self.properties.DHCPEnabled = value
+    self.properties.IPAddresses = []
+    self.properties.Subnets = []
+    self.properties.DefaultGateways = []
+    self.properties.DNSServers = []
+    self.properties.ProtocolIFType = 4096
+    computer_system = self.parent.parent
+    management_service.SetGuestNetworkAdapterConfiguration(computer_system, self)
+
+  @classmethod
+  def from_moh(cls, moh: ManagementObjectHolder, parent_moh: ManagementObjectHolder) -> 'AdapterGuestSettings':
+    return cls._create_cls_from_moh(cls, 'Msvm_GuestNetworkAdapterConfiguration', moh, parent_moh)
 
 
 class VirtualNetworkAdapter(ManagementObjectHolder):
@@ -79,6 +281,17 @@ class VirtualNetworkAdapter(ManagementObjectHolder):
       return result[0]
     return None
 
+  def guest_settings(self):
+    """
+    Returns instance of AdapterGuestSettings.
+
+    :return: associated AdapterGuestSettings with given adapter
+    """
+    settings_path = (
+      Node(Relation.RELATED, "Msvm_GuestNetworkAdapterConfiguration"),
+    )
+    return AdapterGuestSettings.from_moh(self.get_child(settings_path), self)
+
   def connect(self, virtual_switch: 'VirtualSwitch'):
     """
     Connect adapter to given virtual switch.
@@ -89,20 +302,23 @@ class VirtualNetworkAdapter(ManagementObjectHolder):
       self.scope_holder.query_one('SELECT * FROM Msvm_VirtualSystemManagementService')
     )
     Msvm_VirtualSystemSettingData = self.traverse((Node(Relation.RELATED, "Msvm_VirtualSystemSettingData"),))[-1][-1]
-    Msvm_ResourcePool = self.scope_holder.query_one("SELECT * FROM Msvm_ResourcePool WHERE ResourceSubType = 'Microsoft:Hyper-V:Ethernet Connection' AND Primordial = True")
+    Msvm_ResourcePool = self.scope_holder.query_one(
+      "SELECT * FROM Msvm_ResourcePool WHERE ResourceSubType = 'Microsoft:Hyper-V:Ethernet Connection' AND Primordial = True")
     Msvm_EthernetPortAllocationSettingData_Path = (
-      Node(Relation.RELATED, ("Msvm_AllocationCapabilities", "Msvm_ElementCapabilities", None, None, None, None, False, None)),
+      Node(Relation.RELATED,
+           ("Msvm_AllocationCapabilities", "Msvm_ElementCapabilities", None, None, None, None, False, None)),
       Node(Relation.RELATIONSHIP, "Msvm_SettingsDefineCapabilities", selector=PropertySelector('ValueRole', 0)),
       Node(Relation.PROPERTY, "PartComponent", (Property.SINGLE, MOHTransformers.from_reference))
     )
-    Msvm_EthernetPortAllocationSettingData = Msvm_ResourcePool.traverse(Msvm_EthernetPortAllocationSettingData_Path)[-1][-1]
+    Msvm_EthernetPortAllocationSettingData = \
+      Msvm_ResourcePool.traverse(Msvm_EthernetPortAllocationSettingData_Path)[-1][-1]
     Msvm_EthernetPortAllocationSettingData.properties.Parent = self.management_object
     Msvm_EthernetPortAllocationSettingData.properties.HostResource = [virtual_switch.management_object]
     management_service.AddResourceSettings(Msvm_VirtualSystemSettingData, Msvm_EthernetPortAllocationSettingData)
 
   @classmethod
-  def from_moh(cls, moh: ManagementObjectHolder) -> 'VirtualNetworkAdapter':
-    return cls._create_cls_from_moh(cls, 'Msvm_SyntheticEthernetPortSettingData', moh)
+  def from_moh(cls, moh: ManagementObjectHolder, parent_moh: ManagementObjectHolder) -> 'VirtualNetworkAdapter':
+    return cls._create_cls_from_moh(cls, 'Msvm_SyntheticEthernetPortSettingData', moh, parent_moh)
 
 
 class VirtualComPort(ManagementObjectHolder):
@@ -124,8 +340,8 @@ class VirtualComPort(ManagementObjectHolder):
     management_service.ModifyResourceSettings(self)
 
   @classmethod
-  def from_moh(cls, moh: ManagementObjectHolder) -> 'VirtualComPort':
-    return cls._create_cls_from_moh(cls, 'Msvm_SerialPortSettingData', moh)
+  def from_moh(cls, moh: ManagementObjectHolder, parent_moh: ManagementObjectHolder) -> 'VirtualComPort':
+    return cls._create_cls_from_moh(cls, 'Msvm_SerialPortSettingData', moh, parent_moh)
 
 
 class ShutdownComponent(ManagementObjectHolder):
@@ -139,8 +355,8 @@ class ShutdownComponent(ManagementObjectHolder):
     )
 
   @classmethod
-  def from_moh(cls, moh: ManagementObjectHolder) -> 'ShutdownComponent':
-    return cls._create_cls_from_moh(cls, 'Msvm_ShutdownComponent', moh)
+  def from_moh(cls, moh: ManagementObjectHolder, parent_moh: ManagementObjectHolder) -> 'ShutdownComponent':
+    return cls._create_cls_from_moh(cls, 'Msvm_ShutdownComponent', moh, parent_moh)
 
 
 class VirtualMachine(ManagementObjectHolder):
@@ -320,12 +536,14 @@ class VirtualMachine(ManagementObjectHolder):
       "AND Primordial = True"
     )
     Msvm_SyntheticEthernetPortSettingData_Path = (
-      Node(Relation.RELATED, ("Msvm_AllocationCapabilities", "Msvm_ElementCapabilities", None, None, None, None, False, None)),
+      Node(Relation.RELATED,
+           ("Msvm_AllocationCapabilities", "Msvm_ElementCapabilities", None, None, None, None, False, None)),
       Node(Relation.RELATIONSHIP, "Msvm_SettingsDefineCapabilities", selector=PropertySelector('ValueRole', 0)),
       Node(Relation.PROPERTY, "PartComponent", (Property.SINGLE, MOHTransformers.from_reference))
     )
     Msvm_VirtualSystemSettingData = self.traverse((VirtualSystemSettingDataNode,))[-1][-1]
-    Msvm_SyntheticEthernetPortSettingData = Msvm_ResourcePool.traverse(Msvm_SyntheticEthernetPortSettingData_Path)[-1][-1]
+    Msvm_SyntheticEthernetPortSettingData = Msvm_ResourcePool.traverse(Msvm_SyntheticEthernetPortSettingData_Path)[-1][
+      -1]
     Msvm_SyntheticEthernetPortSettingData.properties.VirtualSystemIdentifiers = clr_Array[clr_String]([generate_guid()])
     Msvm_SyntheticEthernetPortSettingData.properties.ElementName = adapter_name
     Msvm_SyntheticEthernetPortSettingData.properties.StaticMacAddress = static_mac
@@ -335,7 +553,7 @@ class VirtualMachine(ManagementObjectHolder):
       Msvm_VirtualSystemSettingData,
       Msvm_SyntheticEthernetPortSettingData
     )
-    return VirtualNetworkAdapter.from_moh(result['ResultingResourceSettings'][-1])
+    return VirtualNetworkAdapter.from_moh(result['ResultingResourceSettings'][-1], self)
 
   def is_connected_to_switch(self, virtual_switch: 'VirtualSwitch'):
     """
@@ -355,11 +573,14 @@ class VirtualMachine(ManagementObjectHolder):
     :param vhd_disk: ``VHDDisk`` to add to machine
     """
     # TODO ability to select controller, disk port, error checking. Make disk bootable by default, etc
-    management_service = VirtualSystemManagementService.from_moh(self.scope_holder.query_one('SELECT * FROM Msvm_VirtualSystemManagementService'))
+    management_service = VirtualSystemManagementService.from_moh(
+      self.scope_holder.query_one('SELECT * FROM Msvm_VirtualSystemManagementService'))
     Msvm_VirtualSystemSettingData = self.get_child((VirtualSystemSettingDataNode,))
-    Msvm_ResourcePool_SyntheticDiskDrive = self.scope_holder.query_one("SELECT * FROM Msvm_ResourcePool WHERE ResourceSubType = 'Microsoft:Hyper-V:Synthetic Disk Drive' AND Primordial = True")
+    Msvm_ResourcePool_SyntheticDiskDrive = self.scope_holder.query_one(
+      "SELECT * FROM Msvm_ResourcePool WHERE ResourceSubType = 'Microsoft:Hyper-V:Synthetic Disk Drive' AND Primordial = True")
     Msvm_StorageAllocationSettingData_Path = (
-      Node(Relation.RELATED, ("Msvm_AllocationCapabilities", "Msvm_ElementCapabilities", None, None, None, None, False, None)),
+      Node(Relation.RELATED,
+           ("Msvm_AllocationCapabilities", "Msvm_ElementCapabilities", None, None, None, None, False, None)),
       Node(Relation.RELATIONSHIP, "Msvm_SettingsDefineCapabilities", selector=PropertySelector('ValueRole', 0)),
       Node(Relation.PROPERTY, "PartComponent", (Property.SINGLE, MOHTransformers.from_reference))
     )
@@ -367,19 +588,25 @@ class VirtualMachine(ManagementObjectHolder):
       Node(
         Relation.RELATED,
         "Msvm_ResourceAllocationSettingData",
-        selector=ListPropertySelector((('ResourceType', 5), ('ResourceSubType', 'Microsoft:Hyper-V:Emulated IDE Controller'), ('Address', 0),))
+        selector=ListPropertySelector(
+          (('ResourceType', 5), ('ResourceSubType', 'Microsoft:Hyper-V:Emulated IDE Controller'), ('Address', 0),))
       ),
     )
     IdeController = Msvm_VirtualSystemSettingData.get_child(IdeController_Path)
-    Msvm_StorageAllocationSettingData = Msvm_ResourcePool_SyntheticDiskDrive.get_child(Msvm_StorageAllocationSettingData_Path).clone()
+    Msvm_StorageAllocationSettingData = Msvm_ResourcePool_SyntheticDiskDrive.get_child(
+      Msvm_StorageAllocationSettingData_Path).clone()
 
     Msvm_StorageAllocationSettingData.properties.Parent = IdeController.management_object
     Msvm_StorageAllocationSettingData.properties.AddressOnParent = 0
-    synthetic_disk_drive = management_service.AddResourceSettings(Msvm_VirtualSystemSettingData, Msvm_StorageAllocationSettingData)['ResultingResourceSettings'][-1]
+    synthetic_disk_drive = \
+      management_service.AddResourceSettings(Msvm_VirtualSystemSettingData, Msvm_StorageAllocationSettingData)[
+        'ResultingResourceSettings'][-1]
 
-    Msvm_ResourcePool_VirtualHardDisk = self.scope_holder.query_one("SELECT * FROM Msvm_ResourcePool WHERE ResourceSubType = 'Microsoft:Hyper-V:Virtual Hard Disk' AND Primordial = True")
+    Msvm_ResourcePool_VirtualHardDisk = self.scope_holder.query_one(
+      "SELECT * FROM Msvm_ResourcePool WHERE ResourceSubType = 'Microsoft:Hyper-V:Virtual Hard Disk' AND Primordial = True")
     virtual_hard_disk_path = (
-      Node(Relation.RELATED, ("Msvm_AllocationCapabilities", "Msvm_ElementCapabilities", None, None, None, None, False, None)),
+      Node(Relation.RELATED,
+           ("Msvm_AllocationCapabilities", "Msvm_ElementCapabilities", None, None, None, None, False, None)),
       Node(Relation.RELATIONSHIP, "Msvm_SettingsDefineCapabilities", selector=PropertySelector('ValueRole', 0)),
       Node(Relation.PROPERTY, "PartComponent", (Property.SINGLE, MOHTransformers.from_reference))
     )
@@ -401,7 +628,7 @@ class VirtualMachine(ManagementObjectHolder):
       Node(Relation.RELATED, "Msvm_SyntheticEthernetPortSettingData"),
     )
     for _, seps in self.traverse(port_to_switch_path):
-      result.append(VirtualNetworkAdapter.from_moh(seps))
+      result.append(VirtualNetworkAdapter.from_moh(seps, self))
     return result
 
   @property
@@ -419,7 +646,7 @@ class VirtualMachine(ManagementObjectHolder):
       Node(Relation.RELATED, "Msvm_SerialPortSettingData")
     )
     for _, _, com_port in self.traverse(com_ports_path):
-      result.append(VirtualComPort.from_moh(com_port))
+      result.append(VirtualComPort.from_moh(com_port, self))
     return result
 
   def get_com_port(self, port: ComPort):
@@ -446,7 +673,7 @@ class VirtualMachine(ManagementObjectHolder):
       operational_status = ShutdownComponent_OperationalStatus.from_code(
         shutdown_component.properties['OperationalStatus'][0])
       if operational_status in (ShutdownComponent_OperationalStatus.OK, ShutdownComponent_OperationalStatus.Degraded):
-        return ShutdownComponent.from_moh(shutdown_component)
+        return ShutdownComponent.from_moh(shutdown_component, self)
     return None
 
   @property
@@ -465,8 +692,8 @@ class VirtualMachine(ManagementObjectHolder):
     )
 
   @classmethod
-  def from_moh(cls, moh: ManagementObjectHolder) -> 'VirtualMachine':
-    return cls._create_cls_from_moh(cls, 'Msvm_ComputerSystem', moh)
+  def from_moh(cls, moh: ManagementObjectHolder, parent_moh: ManagementObjectHolder = None) -> 'VirtualMachine':
+    return cls._create_cls_from_moh(cls, 'Msvm_ComputerSystem', moh, parent_moh)
 
 
 class HypervHost(object):
@@ -498,15 +725,19 @@ class HypervHost(object):
     return [VirtualMachine.from_moh(_machine) for _machine in machines] if machines else []
 
   def machines_by_name(self, name) -> List[VirtualMachine]:
-    machines = self.scope.query('SELECT * FROM Msvm_ComputerSystem WHERE Caption = "Virtual Machine" AND ElementName = "%s"' % name)
+    machines = self.scope.query(
+      'SELECT * FROM Msvm_ComputerSystem WHERE Caption = "Virtual Machine" AND ElementName = "%s"' % name)
     return [VirtualMachine.from_moh(_machine) for _machine in machines] if machines else []
 
   def machine_by_id(self, machine_id) -> VirtualMachine:
-    machines = self.scope.query('SELECT * FROM Msvm_ComputerSystem WHERE Caption = "Virtual Machine" AND Name = "%s"' % machine_id)
+    machines = self.scope.query(
+      'SELECT * FROM Msvm_ComputerSystem WHERE Caption = "Virtual Machine" AND Name = "%s"' % machine_id)
     return [VirtualMachine.from_moh(_machine) for _machine in machines] if machines else []
 
-  def create_machine(self, name, properties_group: Dict[str, Dict[str, Any]] = None, machine_generation: VirtualMachineGeneration = VirtualMachineGeneration.GEN1) -> VirtualMachine:
-    management_service = VirtualSystemManagementService.from_moh(self.scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService'))
+  def create_machine(self, name, properties_group: Dict[str, Dict[str, Any]] = None,
+                     machine_generation: VirtualMachineGeneration = VirtualMachineGeneration.GEN1) -> VirtualMachine:
+    management_service = VirtualSystemManagementService.from_moh(
+      self.scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService'))
     Msvm_VirtualSystemSettingData = self.scope.cls_instance("Msvm_VirtualSystemSettingData")
     Msvm_VirtualSystemSettingData.properties.ElementName = name
     Msvm_VirtualSystemSettingData.properties.VirtualSystemSubType = machine_generation.value

@@ -18,11 +18,21 @@ class JobWrapper(ManagementObjectHolder):
       raise JobException(self)
 
   @classmethod
-  def from_moh(cls, moh: 'ManagementObjectHolder') -> 'JobWrapper':
-    return cls._create_cls_from_moh(cls, ('Msvm_ConcreteJob', 'Msvm_StorageJob'), moh)
+  def from_moh(cls, moh: 'ManagementObjectHolder', parent_moh: ManagementObjectHolder = None) -> 'JobWrapper':
+    return cls._create_cls_from_moh(cls, ('Msvm_ConcreteJob', 'Msvm_StorageJob'), moh, parent_moh)
 
 
 class VirtualSystemManagementService(ManagementObjectHolder):
+  def SetGuestNetworkAdapterConfiguration(self, ComputerSystem, *args):
+    out_objects = self.invoke("SetGuestNetworkAdapterConfiguration", ComputerSystem=ComputerSystem,
+                              NetworkConfiguration=args)
+    return self._evaluate_invocation_result(
+      out_objects,
+      VSMS_ModifyResourceSettings_ReturnCode,
+      VSMS_ModifyResourceSettings_ReturnCode.Completed_with_No_Error,
+      VSMS_ModifyResourceSettings_ReturnCode.Method_Parameters_Checked_Job_Started
+    )
+
   def ModifyResourceSettings(self, *args):
     out_objects = self.invoke("ModifyResourceSettings", ResourceSettings=args)
     return self._evaluate_invocation_result(
@@ -61,5 +71,5 @@ class VirtualSystemManagementService(ManagementObjectHolder):
     )
 
   @classmethod
-  def from_moh(cls, moh: 'ManagementObjectHolder') -> 'VirtualSystemManagementService':
-    return cls._create_cls_from_moh(cls, 'Msvm_VirtualSystemManagementService', moh)
+  def from_moh(cls, moh: 'ManagementObjectHolder', parent_moh: ManagementObjectHolder = None) -> 'VirtualSystemManagementService':
+    return cls._create_cls_from_moh(cls, 'Msvm_VirtualSystemManagementService', moh, parent_moh)

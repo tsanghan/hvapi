@@ -21,39 +21,24 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-import asyncio
+
 import logging
 
 import sys
-from concurrent.futures import ThreadPoolExecutor
 
-from hvapi.aio_hyperv import HypervHost, AioHypervHost
-
-if sys.platform == 'win32':
-  loop = asyncio.ProactorEventLoop()
-  asyncio.set_event_loop(loop)
+from hvapi.hyperv import HypervHost
 
 FORMAT = "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
 logging.basicConfig(format=FORMAT, level=logging.DEBUG)
 
-executor = ThreadPoolExecutor(max_workers=1)
-
-
-loop = asyncio.get_event_loop()
-
-async def main_coro():
-  host = AioHypervHost(HypervHost(), executor, loop)
-  hello_machine = (await host.machines_by_name("hello"))[-1]
-  com_ports = await hello_machine.get_com_ports()
-  await com_ports[0].set_path("\\\\.\\pipe\\hello_com1")
-  pass
-
-
-loop.run_until_complete(main_coro())
-loop.close()
-
-
+host = HypervHost()
+machine = host.machines_by_name("centos7")[-1]
+adapters = machine.network_adapters
+for adapter in adapters:
+    switch = adapter.switch
+    res = adapter.guest_settings().dhcp = True
+    pass
 # hello_machine.connect_to_switch(internal_switch)s
 
 if __name__ == "__main__":
-  pass
+    pass

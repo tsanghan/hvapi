@@ -50,7 +50,7 @@ class CimTypeTransformer(object):
 class MOHTransformers(object):
   @staticmethod
   def from_reference(object_reference, parent: 'ManagementObjectHolder') -> 'ManagementObjectHolder':
-    return ManagementObjectHolder(ManagementObject(object_reference), parent.scope_holder)
+    return ManagementObjectHolder(ManagementObject(object_reference), parent, parent.scope_holder)
 
   @staticmethod
   def from_xml(object_xml, parent: 'ManagementObjectHolder') -> 'ManagementObjectHolder':
@@ -145,12 +145,12 @@ class ScopeHolder(object):
   def __init__(self, namespace=r"\\.\root\virtualization\v2"):
     self.scope = ManagementScope(namespace)
 
-  def query(self, query) -> List['ManagementObjectHolder']:
+  def query(self, query, parent=None) -> List['ManagementObjectHolder']:
     result = []
     query_obj = ObjectQuery(query)
     searcher = ManagementObjectSearcher(self.scope, query_obj)
     for man_object in searcher.Get():
-      result.append(ManagementObjectHolder(man_object, self))
+      result.append(ManagementObjectHolder(man_object, parent, self))
     return result
 
   def query_one(self, query) -> 'ManagementObjectHolder':
@@ -203,9 +203,10 @@ class PropertiesHolder(object):
 
 
 class ManagementObjectHolder(object):
-  def __init__(self, management_object, scope_holder: ScopeHolder):
+  def __init__(self, management_object, parent, scope_holder: ScopeHolder):
     self.scope_holder = scope_holder
     self.management_object = management_object
+    self.parent = parent
 
   def reload(self):
     self.management_object.Get()
@@ -342,7 +343,7 @@ class ManagementObjectHolder(object):
     elif node.relation_type == Relation.RELATED:
       for rel_object in parent_object.management_object.GetRelated(*node.path_args):
         if not parent_object.management_object == rel_object:
-          _result = ManagementObjectHolder(rel_object, parent_object.scope_holder)
+          _result = ManagementObjectHolder(rel_object, parent_object, parent_object.scope_holder)
           if node.selector:
             if node.selector(_result):
               results.append(_result)
@@ -389,7 +390,23 @@ class ManagementObjectHolder(object):
     return result
 
   @staticmethod
-  def _create_cls_from_moh(cls, cls_name, moh):
+  def _create_cls_from_moh(cls, cls_name: str, moh: 'ManagementObjectHolder', parent_moh: 'ManagementObjectHolder'):
+    if not parent_moh:
+      parent_moh = moh.parent
     if moh.management_object.ClassPath.ClassName not in cls_name:
       raise ValueError('Given ManagementObject is not %s' % cls_name)
-    return cls(moh.management_object, moh.scope_holder)
+    return cls(moh.management_object, parent_moh, moh.scope_holder)
+
+  @classmethod
+  def from_moh(cls, moh: 'ManagementObjectHolder', parent_moh: 'ManagementObjectHolder'):
+    """
+    Create concrete class instance from given ManagementObjectHolder. parent_moh can be provided by concrete class to
+    bypass all hierarchy. For example, Msvm_SyntheticEthernetPortSettingData goes through Msvm_VirtualSystemSettingData
+    to Msvm_ComputerSystem, but VirtualMachine class sets itself as parent_moh for VirtualNetworkAdapter class, thus its
+    skips Msvm_VirtualSystemSettingData.
+
+    :param moh: moh object that used to create concrete class
+    :param parent_moh: parent moh object
+    :return: concrete moh instance
+    """
+    raise NotImplementedError
