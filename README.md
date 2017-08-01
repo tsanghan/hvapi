@@ -11,8 +11,8 @@ to copy-paste that code :smile:.
 
 ## Roadmap
 
-* switch to some wmi library(most likely it will be native **.Net Microsoft.Management**  via **pythonnet** bindings, it
-works faster than native python **wmi** package)
+* ~~switch to some wmi library(most likely it will be native **.Net Microsoft.Management**  via **pythonnet** bindings, it
+works faster than native python **wmi** package)~~ - done
 * add auto-generated documentation
 * unit tests(maybe)
 
