@@ -162,7 +162,7 @@ class ScopeHolder(object):
 
   def cls_instance(self, class_name):
     cls = ManagementClass(str(self.scope.Path) + ":" + class_name)
-    return ManagementObjectHolder(cls.CreateInstance(), self)
+    return ManagementObjectHolder(cls.CreateInstance(), None, self)
 
 
 class JobException(Exception):

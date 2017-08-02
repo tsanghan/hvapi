@@ -35,9 +35,6 @@ from hvapi.clr.classes_wrappers import VirtualSystemManagementService
 from hvapi.disk.vhd import VHDDisk
 from hvapi.types import VirtualMachineGeneration, VirtualMachineState, ComPort
 
-_CLS_MAP_PRIORITY = {
-  "Msvm_VirtualSystemSettingData": 0
-}
 DEFAULT_WAIT_OP_TIMEOUT = 60
 
 
@@ -302,16 +299,13 @@ class VirtualNetworkAdapter(ManagementObjectHolder):
       self.scope_holder.query_one('SELECT * FROM Msvm_VirtualSystemManagementService')
     )
     Msvm_VirtualSystemSettingData = self.traverse((Node(Relation.RELATED, "Msvm_VirtualSystemSettingData"),))[-1][-1]
-    Msvm_ResourcePool = self.scope_holder.query_one(
-      "SELECT * FROM Msvm_ResourcePool WHERE ResourceSubType = 'Microsoft:Hyper-V:Ethernet Connection' AND Primordial = True")
+    Msvm_ResourcePool = self.scope_holder.query_one("SELECT * FROM Msvm_ResourcePool WHERE ResourceSubType = 'Microsoft:Hyper-V:Ethernet Connection' AND Primordial = True")
     Msvm_EthernetPortAllocationSettingData_Path = (
-      Node(Relation.RELATED,
-           ("Msvm_AllocationCapabilities", "Msvm_ElementCapabilities", None, None, None, None, False, None)),
+      Node(Relation.RELATED, ("Msvm_AllocationCapabilities", "Msvm_ElementCapabilities", None, None, None, None, False, None)),
       Node(Relation.RELATIONSHIP, "Msvm_SettingsDefineCapabilities", selector=PropertySelector('ValueRole', 0)),
       Node(Relation.PROPERTY, "PartComponent", (Property.SINGLE, MOHTransformers.from_reference))
     )
-    Msvm_EthernetPortAllocationSettingData = \
-      Msvm_ResourcePool.traverse(Msvm_EthernetPortAllocationSettingData_Path)[-1][-1]
+    Msvm_EthernetPortAllocationSettingData = Msvm_ResourcePool.traverse(Msvm_EthernetPortAllocationSettingData_Path)[-1][-1]
     Msvm_EthernetPortAllocationSettingData.properties.Parent = self.management_object
     Msvm_EthernetPortAllocationSettingData.properties.HostResource = [virtual_switch.management_object]
     management_service.AddResourceSettings(Msvm_VirtualSystemSettingData, Msvm_EthernetPortAllocationSettingData)
@@ -365,6 +359,9 @@ class VirtualMachine(ManagementObjectHolder):
   stop, pause, save, reset machine.
   """
   LOG = logging.getLogger('%s.%s' % (__module__, __qualname__))
+  _CLS_MAP_PRIORITY = {
+    "Msvm_VirtualSystemSettingData": 0
+  }
   PATH_MAP = {
     "Msvm_ProcessorSettingData": (
       VirtualSystemSettingDataNode,
@@ -405,7 +402,7 @@ class VirtualMachine(ManagementObjectHolder):
 
     :param properties_group: dict of classes and their properties
     """
-    for cls, properties in sorted(properties_group.items(), key=lambda itm: _CLS_MAP_PRIORITY.get(itm[0], 100)):
+    for cls, properties in sorted(properties_group.items(), key=lambda itm: self._CLS_MAP_PRIORITY.get(itm[0], 100)):
       self.apply_properties(cls, properties)
 
   @property
