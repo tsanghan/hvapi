@@ -1,13 +1,12 @@
 ## Hyper-V management python library
 
-This small python library utilize Hyper-V powershell cmdlets and wmi api(in some cases) to provide simple asynchronous
-python api for creation and management of Hyper-V virtual machines.
+This small python library utilize Hyper-V WMI api to provide simple synchronous and asyncio-compatible python api for 
+creation and management of Hyper-V virtual machines.
 
-## Design
+## Internal Design
 
-All operations performed via simple powershell scripts, executed using *asyncio.create_subprocess_exec*. I did not used
-some native api, because there are lot of existing powershell code for working with Hyper-V, so it is much simpler just 
-to copy-paste that code :smile:.
+All operations performed via `pythonnet` bindings. This allows to call `.Net` assemblies from python just like they are
+native python modules. This library utilize `System.Management` assembly and `root\virtualization\v2` namespace.
 
 ## Roadmap
 

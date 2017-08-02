@@ -7,11 +7,10 @@ from typing import Tuple, Callable, Iterable, Union, List, Any, Sized
 from hvapi.common_types import RangedCodeEnum
 
 clr.AddReference("System.Management")
-from System.Management import ManagementScope, ObjectQuery, ManagementObjectSearcher, ManagementObject, CimType, \
-  ManagementException, ManagementClass
+from System.Management import ManagementScope, ObjectQuery, ManagementObjectSearcher, ManagementObject, CimType, ManagementException, ManagementClass
 from System import Array, String, Guid
 
-# WARNING, clr_Array accepts iterable, e.g. ig you will pass string - it will be array of its chars, not array of one
+# WARNING, clr_Array accepts iterable, e.g. if you will pass string - it will be array of its chars, not array of one
 # string. clr_Array[clr_String](["hello"]) equals to array with one "hello" string in it
 clr_Array = Array
 clr_String = String
@@ -47,98 +46,105 @@ class CimTypeTransformer(object):
     raise Exception("unknown type")
 
 
+class PropertyTransformer(object):
+  @staticmethod
+  def transform(property_value, parent: ManagementObject) -> ManagementObject:
+    raise NotImplementedError
+
+
+class NullTransformer(PropertyTransformer):
+  @staticmethod
+  def transform(property_value, parent: ManagementObject) -> ManagementObject:
+    raise NotImplementedError
+
+
+class ReferenceTransformer(PropertyTransformer):
+  @staticmethod
+  def transform(property_value, parent: ManagementObject) -> ManagementObject:
+    return ManagementObject(property_value)
+
+
 class MOHTransformers(object):
   @staticmethod
-  def from_reference(object_reference) -> 'ManagementObject':
+  def from_reference(object_reference: str, parent: ManagementObject) -> 'ManagementObject':
     return ManagementObject(object_reference)
 
-  @staticmethod
-  def from_xml(object_xml, parent: 'ManagementObject') -> 'ManagementObject':
-    root = ET.fromstring(object_xml)
-    class_name = root.attrib['CLASSNAME']
-    class_instance = parent.scope_holder.cls_instance(class_name)
-    for property_element in root.findall('PROPERTY'):
-      property_name = property_element.attrib['NAME']
-      property_type = property_element.attrib['TYPE']
-      property_value = None
-      value_element = property_element.find('VALUE')
-      if value_element is not None:
-        property_value = value_element.text
-      class_instance.management_object.Properties[property_name].Value = property_value
-    return class_instance
+
+class Selector(object):
+  def is_acceptable(self, management_object: ManagementObject):
+    raise NotImplementedError
 
 
-class Relation(int, Enum):
-  RELATED = 0
-  RELATIONSHIP = 1
-  PROPERTY = 2
+class NullSelector(Selector):
+  def is_acceptable(self, management_object: ManagementObject):
+    return True
 
 
-class Property(int, Enum):
-  ARRAY = 2
-  SINGLE = 3
+class PropertiesSelector(Selector):
+  def __init__(self, **kwargs):
+    self.properties = kwargs
 
-
-class Node(object):
-  """
-  Represents methods of traversing for WMI object hierarchy. Each Node correspondents >=0 ManagementObjects that somehow
-  related to given object. Relations can be represented as GetRelated, GetRelationships methods call results (from
-  ManagementObject) or as transformed ManagementObject reference grabbed form parent object property.
-  """
-
-  def __init__(
-      self,
-      relation_type: Relation,
-      path_args: Union[str, Tuple],
-      property_data: Tuple[Property, Callable[[Any, 'ManagementObject'], 'ManagementObject']] = None,
-      selector: Callable[['ManagementObject'], bool] = None
-  ):
-    """
-    Constructs node. ``property_data`` contains from property type(array, or single property), and callable to transform
-    property data to ManagementObject. ``selector`` is a callable that used to filter out unnecessary nodes, it will
-    retrieve ManagementObject instance and need return True if this ManagementObject meets our requirements.
-
-    :param relation_type: type of relation
-    :param path_args: arguments to be passed to GetRelated, GetRelationships, or string for Relation.PROPERTY
-    :param property_data: stuff related to Relation.PROPERTY
-    :param selector: callable, that must return True if object is ok for us
-    """
-    self.relation_type = relation_type
-
-    if not isinstance(path_args, (list, tuple)):
-      self.path_args = (path_args,)
-    else:
-      self.path_args = path_args
-
-    self.property_type = None
-    self.property_transformer = lambda x, y: x
-    if property_data:
-      self.property_type = property_data[0]
-      if len(property_data) == 2:
-        self.property_transformer = property_data[1]
-    self.selector = selector
-
-
-VirtualSystemSettingDataNode = Node(Relation.RELATED, (
-  "Msvm_VirtualSystemSettingData", "Msvm_SettingsDefineState", None, None, "SettingData", "ManagedElement", False,
-  None))
-
-
-def PropertySelector(property_name, expected_value):
-  def _sel(obj):
-    return obj.properties[property_name] == expected_value
-
-  return _sel
-
-
-def ListPropertySelector(properties):
-  def _sel(obj):
-    for property_name, expected_value in properties:
-      if str(obj.properties[property_name]) != str(expected_value):
+  def is_acceptable(self, management_object: ManagementObject):
+    for property_name, expected_value in self.properties:
+      if str(management_object.properties[property_name]) != str(expected_value):
         return False
     return True
 
-  return _sel
+
+class PropertyNode(object):
+  def __init__(self, property_name, is_array: bool = False, transformer: PropertyTransformer = NullTransformer(), selector: Selector = NullSelector()):
+    self.property_name = property_name
+    self.is_array = is_array
+    self.transformer = transformer
+    self.selector = selector
+    pass
+
+  def get_node_objects(self, management_object: ManagementObject):
+    results = []
+    val = management_object.Properties[self.property_name].Value
+    if not self.is_array:
+      _result = self.transformer.transform(val, management_object)
+      if self.selector.is_acceptable(_result):
+        results.append(_result)
+    else:
+      for val_item in val:
+        _result = self.transformer.transform(val_item, management_object)
+        if self.selector.is_acceptable(_result):
+          results.append(_result)
+    return results
+
+
+class RelatedNode(object):
+  def __init__(self, related_arguments, selector: Selector = NullSelector()):
+    self.related_arguments = related_arguments
+    self.selector = selector
+
+  def get_node_objects(self, management_object: ManagementObject):
+    results = []
+    for rel_object in management_object.GetRelated(*self.related_arguments):
+      if not management_object == rel_object:
+        _result = rel_object
+        if self.selector.is_acceptable(_result):
+          results.append(_result)
+    return results
+
+
+class RelationshipNode(object):
+  def __init__(self, relationship_arguments, selector: Selector = NullSelector()):
+    self.relationship_arguments = relationship_arguments
+    self.selector = selector
+
+  def get_node_objects(self, management_object: ManagementObject):
+    results = []
+    for rel_object in management_object.GetRelationships(*self.relationship_arguments):
+      if not management_object == rel_object:
+        _result = rel_object
+        if self.selector.is_acceptable(_result):
+          results.append(_result)
+    return results
+
+
+VirtualSystemSettingDataNode = RelationshipNode(("Msvm_VirtualSystemSettingData", "Msvm_SettingsDefineState", None, None, "SettingData", "ManagedElement", False, None))
 
 
 class ScopeHolder(object):
@@ -268,13 +274,13 @@ class ManagementObject(object):
       if parameter.IsArray:
         if not isinstance(kwargs[parameter_name], collections.Iterable):
           raise ValueError("Parameter '%s' must be iterable" % parameter_name)
-        array_items = [self._transform_object(item, parameter_type) for item in kwargs[parameter_name]]
+        array_items = [self.invoke_transform_object(item, parameter_type) for item in kwargs[parameter_name]]
         if array_items:
           parameter_value = Array[parameter_type](array_items)
         else:
           parameter_value = None
       else:
-        parameter_value = self._transform_object(kwargs[parameter_name], parameter_type)
+        parameter_value = self.invoke_transform_object(kwargs[parameter_name], parameter_type)
 
       parameters.Properties[parameter_name].Value = parameter_value
 
@@ -285,9 +291,9 @@ class ManagementObject(object):
       _property_value = None
       if _property.Value is not None:
         if _property.IsArray:
-          _property_value = [self._transform_object(item, _property_type) for item in _property.Value]
+          _property_value = [self.invoke_transform_object(item, _property_type) for item in _property.Value]
         else:
-          _property_value = self._transform_object(_property.Value, _property_type)
+          _property_value = self.invoke_transform_object(_property.Value, _property_type)
       transformed_result[_property.Name] = _property_value
     return transformed_result
 
@@ -297,10 +303,19 @@ class ManagementObject(object):
   def __str__(self):
     return str(self.management_object)
 
-  def _transform_object(self, obj, expected_type=None):
+  @staticmethod
+  def invoke_transform_object(obj, expected_type=None):
+    """
+    Transforms input object to expected type.
+
+    :param obj:
+    :param expected_type:
+    :return:
+    """
     if obj is None:
       return None
 
+    # management object to something that can be passed to function call
     if isinstance(obj, ManagementObject):
       if expected_type == String:
         return String(obj.GetText(2))
@@ -310,7 +325,7 @@ class ManagementObject(object):
 
     if isinstance(obj, (String, str)):
       if expected_type == ManagementObject:
-        return MOHTransformers.from_reference(obj)
+        return ManagementObject(obj)
 
     if isinstance(obj, int):
       if expected_type == int:
