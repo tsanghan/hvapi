@@ -13,6 +13,7 @@ to copy-paste that code :smile:.
 
 * ~~switch to some wmi library(most likely it will be native **.Net Microsoft.Management**  via **pythonnet** bindings, it
 works faster than native python **wmi** package)~~ - done
+* refactor and document internal code to make is simpler to extend library
 * add auto-generated documentation
 * unit tests(maybe)
 
