@@ -3,10 +3,10 @@ import time
 from hvapi.clr.types import Msvm_ConcreteJob_JobState, VSMS_ModifyResourceSettings_ReturnCode, \
   VSMS_ModifySystemSettings_ReturnCode, VSMS_AddResourceSettings_ReturnCode, \
   MIMS_GetVirtualHardDiskSettingData_ReturnCode
-from hvapi.clr.base import ManagementObjectHolder, JobException
+from hvapi.clr.base import JobException, ManagementObject
 
 
-class JobWrapper(ManagementObjectHolder):
+class JobWrapper(ManagementObject):
   def wait(self):
     job_state = Msvm_ConcreteJob_JobState.from_code(self.properties['JobState'])
     while job_state not in [Msvm_ConcreteJob_JobState.Completed, Msvm_ConcreteJob_JobState.Terminated,
@@ -18,11 +18,11 @@ class JobWrapper(ManagementObjectHolder):
       raise JobException(self)
 
   @classmethod
-  def from_moh(cls, moh: 'ManagementObjectHolder', parent_moh: ManagementObjectHolder = None) -> 'JobWrapper':
+  def from_moh(cls, moh: 'ManagementObject', parent_moh: ManagementObject = None) -> 'JobWrapper':
     return cls._create_cls_from_moh(cls, ('Msvm_ConcreteJob', 'Msvm_StorageJob'), moh, parent_moh)
 
 
-class VirtualSystemManagementService(ManagementObjectHolder):
+class VirtualSystemManagementService(ManagementObject):
   def SetGuestNetworkAdapterConfiguration(self, ComputerSystem, *args):
     out_objects = self.invoke("SetGuestNetworkAdapterConfiguration", ComputerSystem=ComputerSystem,
                               NetworkConfiguration=args)
@@ -71,5 +71,5 @@ class VirtualSystemManagementService(ManagementObjectHolder):
     )
 
   @classmethod
-  def from_moh(cls, moh: 'ManagementObjectHolder', parent_moh: ManagementObjectHolder = None) -> 'VirtualSystemManagementService':
+  def from_moh(cls, moh: 'ManagementObjectHolder', parent_moh: ManagementObject = None) -> 'VirtualSystemManagementService':
     return cls._create_cls_from_moh(cls, 'Msvm_VirtualSystemManagementService', moh, parent_moh)

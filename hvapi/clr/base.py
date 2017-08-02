@@ -49,11 +49,11 @@ class CimTypeTransformer(object):
 
 class MOHTransformers(object):
   @staticmethod
-  def from_reference(object_reference, parent: 'ManagementObjectHolder') -> 'ManagementObjectHolder':
-    return ManagementObjectHolder(ManagementObject(object_reference), parent, parent.scope_holder)
+  def from_reference(object_reference) -> 'ManagementObject':
+    return ManagementObject(object_reference)
 
   @staticmethod
-  def from_xml(object_xml, parent: 'ManagementObjectHolder') -> 'ManagementObjectHolder':
+  def from_xml(object_xml, parent: 'ManagementObject') -> 'ManagementObject':
     root = ET.fromstring(object_xml)
     class_name = root.attrib['CLASSNAME']
     class_instance = parent.scope_holder.cls_instance(class_name)
@@ -90,8 +90,8 @@ class Node(object):
       self,
       relation_type: Relation,
       path_args: Union[str, Tuple],
-      property_data: Tuple[Property, Callable[[Any, 'ManagementObjectHolder'], 'ManagementObjectHolder']] = None,
-      selector: Callable[['ManagementObjectHolder'], bool] = None
+      property_data: Tuple[Property, Callable[[Any, 'ManagementObject'], 'ManagementObject']] = None,
+      selector: Callable[['ManagementObject'], bool] = None
   ):
     """
     Constructs node. ``property_data`` contains from property type(array, or single property), and callable to transform
@@ -145,15 +145,15 @@ class ScopeHolder(object):
   def __init__(self, namespace=r"\\.\root\virtualization\v2"):
     self.scope = ManagementScope(namespace)
 
-  def query(self, query, parent=None) -> List['ManagementObjectHolder']:
+  def query(self, query, parent=None) -> List['ManagementObject']:
     result = []
     query_obj = ObjectQuery(query)
     searcher = ManagementObjectSearcher(self.scope, query_obj)
     for man_object in searcher.Get():
-      result.append(ManagementObjectHolder(man_object, parent, self))
+      result.append(man_object)
     return result
 
-  def query_one(self, query) -> 'ManagementObjectHolder':
+  def query_one(self, query) -> 'ManagementObject':
     result = self.query(query)
     if len(result) > 1:
       raise Exception("Got too many results for query '%s'" % query)
@@ -162,7 +162,7 @@ class ScopeHolder(object):
 
   def cls_instance(self, class_name):
     cls = ManagementClass(str(self.scope.Path) + ":" + class_name)
-    return ManagementObjectHolder(cls.CreateInstance(), None, self)
+    return cls.CreateInstance()
 
 
 class JobException(Exception):
@@ -202,27 +202,39 @@ class PropertiesHolder(object):
     return self.management_object.Properties[item].Value
 
 
-class ManagementObjectHolder(object):
-  def __init__(self, management_object, parent, scope_holder: ScopeHolder):
-    self.scope_holder = scope_holder
-    self.management_object = management_object
-    self.parent = parent
+def opencls(cls):
+  def update(extension):
+    for k, v in extension.__dict__.items():
+      if k != '__dict__':
+        try:
+          setattr(cls, k, v)
+        except AttributeError as e:
+          if "attribute is read-only" in str(e):
+            pass
+          else:
+            raise
+    return cls
 
+  return update
+
+
+@opencls(ManagementObject)
+class ManagementObject(object):
   def reload(self):
-    self.management_object.Get()
+    self.Get()
 
   @property
   def properties(self):
-    return PropertiesHolder(self.management_object)
+    return PropertiesHolder(self)
 
   @property
   def properties_dict(self):
     result = {}
-    for _property in self.management_object.Properties:
+    for _property in self.Properties:
       result[_property.Name] = _property.Value
     return result
 
-  def traverse(self, traverse_path: Iterable[Node]) -> List[List['ManagementObjectHolder']]:
+  def traverse(self, traverse_path: Iterable[Node]) -> List[List[ManagementObject]]:
     """
     Traverse through management object hierarchy based on given path.
     Return all found path from given object to target object.
@@ -280,7 +292,7 @@ class ManagementObjectHolder(object):
     return transformed_result
 
   def clone(self):
-    return ManagementObjectHolder(self.management_object.Clone(), self.scope_holder)
+    return self.Clone()
 
   def __str__(self):
     return str(self.management_object)
@@ -288,9 +300,6 @@ class ManagementObjectHolder(object):
   def _transform_object(self, obj, expected_type=None):
     if obj is None:
       return None
-
-    if isinstance(obj, ManagementObjectHolder):
-      obj = obj.management_object
 
     if isinstance(obj, ManagementObject):
       if expected_type == String:
@@ -301,7 +310,7 @@ class ManagementObjectHolder(object):
 
     if isinstance(obj, (String, str)):
       if expected_type == ManagementObject:
-        return MOHTransformers.from_reference(obj, self)
+        return MOHTransformers.from_reference(obj)
 
     if isinstance(obj, int):
       if expected_type == int:
@@ -318,10 +327,10 @@ class ManagementObjectHolder(object):
     raise Exception("Unknown object to transform: '%s'" % obj)
 
   @staticmethod
-  def _get_node_objects(parent_object: 'ManagementObjectHolder', node: 'Node'):
+  def _get_node_objects(parent_object: 'ManagementObject', node: 'Node'):
     results = []
     if node.relation_type == Relation.PROPERTY:
-      val = parent_object.management_object.Properties[node.path_args[0]].Value
+      val = parent_object.Properties[node.path_args[0]].Value
       if node.property_type == Property.SINGLE:
         _result = node.property_transformer(val, parent_object)
         if node.selector:
@@ -331,7 +340,7 @@ class ManagementObjectHolder(object):
           results.append(_result)
       elif node.property_type == Property.ARRAY:
         for val_item in val:
-          _result = node.property_transformer(val_item, parent_object)
+          _result = node.property_transformer(val_item)
           if node.selector:
             if node.selector(_result):
               results.append(_result)
@@ -341,9 +350,9 @@ class ManagementObjectHolder(object):
         raise Exception("Unknown property type")
       return results
     elif node.relation_type == Relation.RELATED:
-      for rel_object in parent_object.management_object.GetRelated(*node.path_args):
-        if not parent_object.management_object == rel_object:
-          _result = ManagementObjectHolder(rel_object, parent_object, parent_object.scope_holder)
+      for rel_object in parent_object.GetRelated(*node.path_args):
+        if not parent_object == rel_object:
+          _result = rel_object
           if node.selector:
             if node.selector(_result):
               results.append(_result)
@@ -351,9 +360,9 @@ class ManagementObjectHolder(object):
             results.append(_result)
       return results
     elif node.relation_type == Relation.RELATIONSHIP:
-      for rel_object in parent_object.management_object.GetRelationships(*node.path_args):
-        if not parent_object.management_object == rel_object:
-          _result = ManagementObjectHolder(rel_object, parent_object.scope_holder)
+      for rel_object in parent_object.GetRelationships(*node.path_args):
+        if not parent_object == rel_object:
+          _result = rel_object
           if node.selector:
             if node.selector(_result):
               results.append(_result)
@@ -364,7 +373,7 @@ class ManagementObjectHolder(object):
       raise Exception("Unknown path part type")
 
   @classmethod
-  def _internal_traversal(cls, traverse_path: Union[Sized, Iterable[Node]], parent: 'ManagementObjectHolder'):
+  def _internal_traversal(cls, traverse_path: Union[Sized, Iterable[Node]], parent: 'ManagementObject'):
     results = []
     if len(traverse_path) == 1:
       for obj in cls._get_node_objects(parent, traverse_path[0]):
@@ -388,25 +397,3 @@ class ManagementObjectHolder(object):
     if return_value != ok_value:
       raise InvocationException("Failed execute method with return value '%s'" % return_value.name)
     return result
-
-  @staticmethod
-  def _create_cls_from_moh(cls, cls_name: str, moh: 'ManagementObjectHolder', parent_moh: 'ManagementObjectHolder'):
-    if not parent_moh:
-      parent_moh = moh.parent
-    if moh.management_object.ClassPath.ClassName not in cls_name:
-      raise ValueError('Given ManagementObject is not %s' % cls_name)
-    return cls(moh.management_object, parent_moh, moh.scope_holder)
-
-  @classmethod
-  def from_moh(cls, moh: 'ManagementObjectHolder', parent_moh: 'ManagementObjectHolder'):
-    """
-    Create concrete class instance from given ManagementObjectHolder. parent_moh can be provided by concrete class to
-    bypass all hierarchy. For example, Msvm_SyntheticEthernetPortSettingData goes through Msvm_VirtualSystemSettingData
-    to Msvm_ComputerSystem, but VirtualMachine class sets itself as parent_moh for VirtualNetworkAdapter class, thus its
-    skips Msvm_VirtualSystemSettingData.
-
-    :param moh: moh object that used to create concrete class
-    :param parent_moh: parent moh object
-    :return: concrete moh instance
-    """
-    raise NotImplementedError
