@@ -1,9 +1,9 @@
 import time
 
 from hvapi.clr.types import Msvm_ConcreteJob_JobState, VSMS_ModifyResourceSettings_ReturnCode, \
-  VSMS_ModifySystemSettings_ReturnCode, VSMS_AddResourceSettings_ReturnCode, \
-  MIMS_GetVirtualHardDiskSettingData_ReturnCode
+  VSMS_ModifySystemSettings_ReturnCode, VSMS_AddResourceSettings_ReturnCode
 from hvapi.clr.base import JobException, ManagementObject
+from hvapi.clr.invoke import evaluate_invocation_result
 
 
 class JobWrapper(ManagementObject):
@@ -26,7 +26,7 @@ class VirtualSystemManagementService(ManagementObject):
   def SetGuestNetworkAdapterConfiguration(self, ComputerSystem, *args):
     out_objects = self.invoke("SetGuestNetworkAdapterConfiguration", ComputerSystem=ComputerSystem,
                               NetworkConfiguration=args)
-    return self._evaluate_invocation_result(
+    return evaluate_invocation_result(
       out_objects,
       VSMS_ModifyResourceSettings_ReturnCode,
       VSMS_ModifyResourceSettings_ReturnCode.Completed_with_No_Error,
@@ -35,7 +35,7 @@ class VirtualSystemManagementService(ManagementObject):
 
   def ModifyResourceSettings(self, *args):
     out_objects = self.invoke("ModifyResourceSettings", ResourceSettings=args)
-    return self._evaluate_invocation_result(
+    return evaluate_invocation_result(
       out_objects,
       VSMS_ModifyResourceSettings_ReturnCode,
       VSMS_ModifyResourceSettings_ReturnCode.Completed_with_No_Error,
@@ -44,7 +44,7 @@ class VirtualSystemManagementService(ManagementObject):
 
   def ModifySystemSettings(self, SystemSettings):
     out_objects = self.invoke("ModifySystemSettings", SystemSettings=SystemSettings)
-    return self._evaluate_invocation_result(
+    return evaluate_invocation_result(
       out_objects,
       VSMS_ModifySystemSettings_ReturnCode,
       VSMS_ModifySystemSettings_ReturnCode.Completed_with_No_Error,
@@ -53,7 +53,7 @@ class VirtualSystemManagementService(ManagementObject):
 
   def AddResourceSettings(self, AffectedConfiguration, *args):
     out_objects = self.invoke("AddResourceSettings", AffectedConfiguration=AffectedConfiguration, ResourceSettings=args)
-    return self._evaluate_invocation_result(
+    return evaluate_invocation_result(
       out_objects,
       VSMS_AddResourceSettings_ReturnCode,
       VSMS_AddResourceSettings_ReturnCode.Completed_with_No_Error,
@@ -63,7 +63,7 @@ class VirtualSystemManagementService(ManagementObject):
   def DefineSystem(self, SystemSettings, ResourceSettings=[], ReferenceConfiguration=None):
     out_objects = self.invoke("DefineSystem", SystemSettings=SystemSettings, ResourceSettings=ResourceSettings,
                               ReferenceConfiguration=ReferenceConfiguration)
-    return self._evaluate_invocation_result(
+    return evaluate_invocation_result(
       out_objects,
       VSMS_AddResourceSettings_ReturnCode,
       VSMS_AddResourceSettings_ReturnCode.Completed_with_No_Error,

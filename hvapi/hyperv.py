@@ -30,6 +30,7 @@ from hvapi.clr.types import (ComputerSystem_RequestStateChange_RequestedState,
                              ShutdownComponent_OperationalStatus, ShutdownComponent_ShutdownComponent_ReturnCodes)
 from hvapi.clr.imports import clr_Array, clr_String
 from hvapi.clr.base import ScopeHolder, ManagementObject, generate_guid
+from hvapi.clr.invoke import evaluate_invocation_result
 from hvapi.clr.traversal import ReferenceTransformer, PropertiesSelector, PropertyNode, RelatedNode, RelationshipNode, \
   VirtualSystemSettingDataNode
 from hvapi.clr.classes_wrappers import VirtualSystemManagementService
@@ -161,7 +162,7 @@ class ShutdownComponent(ManagementObject):
 
   def InitiateShutdown(self, Force, Reason):
     out_objects = self.invoke("InitiateShutdown", Force=Force, Reason=Reason)
-    return self._evaluate_invocation_result(
+    return evaluate_invocation_result(
       out_objects,
       ShutdownComponent_ShutdownComponent_ReturnCodes,
       ShutdownComponent_ShutdownComponent_ReturnCodes.Completed_with_No_Error,
@@ -488,7 +489,7 @@ class VirtualMachine(ManagementObject):
   # WMI object methods
   def RequestStateChange(self, RequestedState: ComputerSystem_RequestStateChange_RequestedState, TimeoutPeriod=None):
     out_objects = self.invoke("RequestStateChange", RequestedState=RequestedState.value, TimeoutPeriod=TimeoutPeriod)
-    return self._evaluate_invocation_result(
+    return evaluate_invocation_result(
       out_objects,
       ComputerSystem_RequestStateChange_ReturnCodes,
       ComputerSystem_RequestStateChange_ReturnCodes.Completed_with_No_Error,

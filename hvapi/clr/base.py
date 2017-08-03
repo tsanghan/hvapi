@@ -3,8 +3,8 @@ from typing import List, Sequence
 
 from hvapi.clr.imports import Guid, CimType, String, ManagementScope, ObjectQuery, ManagementObjectSearcher, \
   ManagementClass, ManagementException, ManagementObject, Array
+from hvapi.clr.invoke import transform_argument
 from hvapi.clr.traversal import Node, recursive_traverse
-from hvapi.common_types import RangedCodeEnum
 
 
 def generate_guid(fmt="B"):
@@ -197,13 +197,13 @@ class ManagementObject(object):
       if parameter.IsArray:
         if not isinstance(kwargs[parameter_name], collections.Iterable):
           raise ValueError("Parameter '%s' must be iterable" % parameter_name)
-        array_items = [self.invoke_transform_object(item, parameter_type) for item in kwargs[parameter_name]]
+        array_items = [transform_argument(item, parameter_type) for item in kwargs[parameter_name]]
         if array_items:
           parameter_value = Array[parameter_type](array_items)
         else:
           parameter_value = None
       else:
-        parameter_value = self.invoke_transform_object(kwargs[parameter_name], parameter_type)
+        parameter_value = transform_argument(kwargs[parameter_name], parameter_type)
 
       parameters.Properties[parameter_name].Value = parameter_value
 
@@ -214,9 +214,9 @@ class ManagementObject(object):
       _property_value = None
       if _property.Value is not None:
         if _property.IsArray:
-          _property_value = [self.invoke_transform_object(item, _property_type) for item in _property.Value]
+          _property_value = [transform_argument(item, _property_type) for item in _property.Value]
         else:
-          _property_value = self.invoke_transform_object(_property.Value, _property_type)
+          _property_value = transform_argument(_property.Value, _property_type)
       transformed_result[_property.Name] = _property_value
     return transformed_result
 
@@ -225,53 +225,3 @@ class ManagementObject(object):
 
   def __str__(self):
     return str(self)
-
-  # TODO move invoke static stuff to separate fle
-  @staticmethod
-  def invoke_transform_object(obj, expected_type=None):
-    """
-    Transforms input object to expected type.
-
-    :param obj:
-    :param expected_type:
-    :return:
-    """
-    if obj is None:
-      return None
-
-    # management object to something that can be passed to function call
-    if isinstance(obj, ManagementObject):
-      if expected_type == String:
-        return String(obj.GetText(2))
-      if expected_type == ManagementObject:
-        return obj
-      raise ValueError("Object '%s' can not be transformed to '%s'" % (obj, expected_type))
-
-    if isinstance(obj, (String, str)):
-      if expected_type == ManagementObject:
-        return ManagementObject(obj)
-
-    if isinstance(obj, int):
-      if expected_type == int:
-        return obj
-
-    if isinstance(obj, bool):
-      if expected_type == bool:
-        return obj
-
-    if isinstance(obj, (str, String)):
-      if expected_type == String:
-        return String(obj)
-
-    raise Exception("Unknown object to transform: '%s'" % obj)
-
-  @staticmethod
-  def _evaluate_invocation_result(result, codes_enum: RangedCodeEnum, ok_value, job_value):
-    return_value = codes_enum.from_code(result['ReturnValue'])
-    if return_value == job_value:
-      from hvapi.clr.classes_wrappers import JobWrapper
-      result['Job'].concrete_cls(JobWrapper).wait()
-      return result
-    if return_value != ok_value:
-      raise InvocationException("Failed execute method with return value '%s'" % return_value.name)
-    return result
