@@ -36,3 +36,38 @@ class RangedCodeEnum(Enum):
           return enum_item
       elif enum_val == value:
         return enum_item
+
+
+def opencls(cls):
+  """
+  Implements 'open class' pattern for python. Allow to add members for already existing class.
+  This example shows how to make Test class with tho methods in tho class definitions::
+
+     class Test(object):
+       def method1(self):
+         pass
+
+
+      @opencls(Test)
+      class Test(object)
+       def method2(self):
+         pass
+
+  So, this will results in one Test class that will have methods from both definitions.
+
+  :param cls: class to open
+  :return: modified class object
+  """
+  def update(extension):
+    for k, v in extension.__dict__.items():
+      if k != '__dict__':
+        try:
+          setattr(cls, k, v)
+        except AttributeError as e:
+          if "attribute is read-only" in str(e):
+            pass
+          else:
+            raise
+    return cls
+
+  return update

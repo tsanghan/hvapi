@@ -26,6 +26,7 @@ from hvapi.clr.imports import Guid, CimType, String, ManagementScope, ObjectQuer
   ManagementClass, ManagementException, ManagementObject, Array
 from hvapi.clr.invoke import transform_argument
 from hvapi.clr.traversal import Node, recursive_traverse
+from hvapi.common import opencls
 
 
 def generate_guid(fmt="B"):
@@ -56,22 +57,6 @@ class CimTypeTransformer(object):
     if value == CimType.Boolean:
       return bool
     raise Exception("unknown type")
-
-
-def opencls(cls):
-  def update(extension):
-    for k, v in extension.__dict__.items():
-      if k != '__dict__':
-        try:
-          setattr(cls, k, v)
-        except AttributeError as e:
-          if "attribute is read-only" in str(e):
-            pass
-          else:
-            raise
-    return cls
-
-  return update
 
 
 @opencls(ManagementScope)
