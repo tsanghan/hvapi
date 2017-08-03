@@ -29,9 +29,10 @@ FORMAT = "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
 logging.basicConfig(format=FORMAT, level=logging.DEBUG)
 
 host = HypervHost()
-machine = host.machines_by_name("centos6")[-1]
+machine = host.machines_by_name("centos7")[-1]
 adapters = machine.network_adapters
 for adapter in adapters:
   switch = adapter.switch
-  res = adapter.guest_settings().dhcp = True
+  guest_settings = adapter.guest_settings()
+  guest_settings.dhcp = True
   pass

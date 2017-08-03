@@ -25,11 +25,13 @@ import logging
 import time
 from typing import List, Dict, Any
 
-from hvapi.clr.types import (ComputerSystem_RequestStateChange_RequestedState, ComputerSystem_RequestStateChange_ReturnCodes, ComputerSystem_EnabledState,
+from hvapi.clr.types import (ComputerSystem_RequestStateChange_RequestedState,
+                             ComputerSystem_RequestStateChange_ReturnCodes, ComputerSystem_EnabledState,
                              ShutdownComponent_OperationalStatus, ShutdownComponent_ShutdownComponent_ReturnCodes)
 from hvapi.clr.imports import clr_Array, clr_String
 from hvapi.clr.base import ScopeHolder, ManagementObject, generate_guid
-from hvapi.clr.traversal import ReferenceTransformer, PropertiesSelector, PropertyNode, RelatedNode, RelationshipNode, VirtualSystemSettingDataNode
+from hvapi.clr.traversal import ReferenceTransformer, PropertiesSelector, PropertyNode, RelatedNode, RelationshipNode, \
+  VirtualSystemSettingDataNode
 from hvapi.clr.classes_wrappers import VirtualSystemManagementService
 from hvapi.disk.vhd import VHDDisk
 from hvapi.types import VirtualMachineGeneration, VirtualMachineState, ComPort
@@ -50,16 +52,13 @@ class VirtualSwitch(ManagementObject):
     if other:
       return self.id == other.id and self.name == other.name
 
-  @classmethod
-  def from_moh(cls, moh: ManagementObject, parent_moh: ManagementObject = None) -> 'VirtualSwitch':
-    return VirtualSwitch(moh.Path)
-    # return cls._create_cls_from_moh(cls, 'Msvm_VirtualEthernetSwitch', moh, parent_moh)
 
 
 class AdapterGuestSettings(ManagementObject):
   """
   Class for managing virtual adapter guest settings. Can be used to inject static or dhcp ip settings.
   """
+  MO_CLS = 'Msvm_GuestNetworkAdapterConfiguration'
 
   @property
   def dhcp(self):
@@ -68,9 +67,8 @@ class AdapterGuestSettings(ManagementObject):
   @dhcp.setter
   def dhcp(self, value):
     # todo fail on running machine
-    management_service = VirtualSystemManagementService.from_moh(
-      self.scope_holder.query_one('SELECT * FROM Msvm_VirtualSystemManagementService')
-    )
+    management_service = self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService').concrete_cls(
+      VirtualSystemManagementService)
     self.properties.DHCPEnabled = value
     self.properties.IPAddresses = []
     self.properties.Subnets = []
@@ -80,13 +78,10 @@ class AdapterGuestSettings(ManagementObject):
     computer_system = self.parent.parent
     management_service.SetGuestNetworkAdapterConfiguration(computer_system, self)
 
-  @classmethod
-  def from_moh(cls, moh: ManagementObject, parent_moh: ManagementObject) -> 'AdapterGuestSettings':
-    return ManagementObject(moh.Path)
-    # return cls._create_cls_from_moh(cls, 'Msvm_GuestNetworkAdapterConfiguration', moh, parent_moh)
-
 
 class VirtualNetworkAdapter(ManagementObject):
+  MO_CLS = 'Msvm_SyntheticEthernetPortSettingData'
+
   @property
   def address(self) -> str:
     return self.properties['Address']
@@ -99,14 +94,14 @@ class VirtualNetworkAdapter(ManagementObject):
       PropertyNode("HostResource", transformer=ReferenceTransformer())
     )
     for _, virtual_switch in self.traverse(port_to_switch_path):
-      result.append(VirtualSwitch.from_moh(virtual_switch))
+      result.append(virtual_switch.concrete_cls(VirtualSwitch))
     if len(result) > 1:
       raise Exception("Something horrible happened, virtual network adapter connected to more that one virtual switch")
     if result:
       return result[0]
     return None
 
-  def guest_settings(self):
+  def guest_settings(self) -> AdapterGuestSettings:
     """
     Returns instance of AdapterGuestSettings.
 
@@ -115,7 +110,7 @@ class VirtualNetworkAdapter(ManagementObject):
     settings_path = (
       RelatedNode(("Msvm_GuestNetworkAdapterConfiguration",)),
     )
-    return AdapterGuestSettings.from_moh(self.get_child(settings_path), self)
+    return self.get_child(settings_path).concrete_cls(AdapterGuestSettings)
 
   def connect(self, virtual_switch: 'VirtualSwitch'):
     """
@@ -123,28 +118,26 @@ class VirtualNetworkAdapter(ManagementObject):
 
     :param virtual_switch: virtual switch to connect
     """
-    management_service = VirtualSystemManagementService.from_moh(
-      self.scope_holder.query_one('SELECT * FROM Msvm_VirtualSystemManagementService')
-    )
+    management_service = self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService').concrete_cls(
+      VirtualSystemManagementService)
     Msvm_VirtualSystemSettingData = self.traverse((RelatedNode(("Msvm_VirtualSystemSettingData",)),))[-1][-1]
-    Msvm_ResourcePool = self.scope_holder.query_one("SELECT * FROM Msvm_ResourcePool WHERE ResourceSubType = 'Microsoft:Hyper-V:Ethernet Connection' AND Primordial = True")
+    Msvm_ResourcePool = self.Scope.query_one(
+      "SELECT * FROM Msvm_ResourcePool WHERE ResourceSubType = 'Microsoft:Hyper-V:Ethernet Connection' AND Primordial = True")
     Msvm_EthernetPortAllocationSettingData_Path = (
       RelatedNode(("Msvm_AllocationCapabilities", "Msvm_ElementCapabilities", None, None, None, None, False, None)),
       RelationshipNode(("Msvm_SettingsDefineCapabilities",), selector=PropertiesSelector(ValueRole=0)),
       PropertyNode("PartComponent", transformer=ReferenceTransformer())
     )
-    Msvm_EthernetPortAllocationSettingData = Msvm_ResourcePool.traverse(Msvm_EthernetPortAllocationSettingData_Path)[-1][-1]
+    Msvm_EthernetPortAllocationSettingData = \
+      Msvm_ResourcePool.traverse(Msvm_EthernetPortAllocationSettingData_Path)[-1][-1]
     Msvm_EthernetPortAllocationSettingData.properties.Parent = self.management_object
     Msvm_EthernetPortAllocationSettingData.properties.HostResource = [virtual_switch.management_object]
     management_service.AddResourceSettings(Msvm_VirtualSystemSettingData, Msvm_EthernetPortAllocationSettingData)
 
-  @classmethod
-  def from_moh(cls, moh: ManagementObject, parent_moh: ManagementObject) -> 'VirtualNetworkAdapter':
-    return VirtualNetworkAdapter(moh.Path)
-    # return cls._create_cls_from_moh(cls, 'Msvm_SyntheticEthernetPortSettingData', moh, parent_moh)
-
 
 class VirtualComPort(ManagementObject):
+  MO_CLS = 'Msvm_SerialPortSettingData'
+
   @property
   def name(self) -> str:
     return self.properties.ElementName
@@ -156,18 +149,15 @@ class VirtualComPort(ManagementObject):
 
   @path.setter
   def path(self, value):
-    management_service = VirtualSystemManagementService.from_moh(
-      self.scope_holder.query_one('SELECT * FROM Msvm_VirtualSystemManagementService')
-    )
+    management_service = self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService').concrete_cls(
+      VirtualSystemManagementService)
     self.properties.Connection = [value]
     management_service.ModifyResourceSettings(self)
 
-  @classmethod
-  def from_moh(cls, moh: ManagementObject, parent_moh: ManagementObject) -> 'VirtualComPort':
-    return cls._create_cls_from_moh(cls, 'Msvm_SerialPortSettingData', moh, parent_moh)
-
 
 class ShutdownComponent(ManagementObject):
+  MO_CLS = 'Msvm_ShutdownComponent'
+
   def InitiateShutdown(self, Force, Reason):
     out_objects = self.invoke("InitiateShutdown", Force=Force, Reason=Reason)
     return self._evaluate_invocation_result(
@@ -177,10 +167,6 @@ class ShutdownComponent(ManagementObject):
       ShutdownComponent_ShutdownComponent_ReturnCodes.Method_Parameters_Checked_JobStarted
     )
 
-  @classmethod
-  def from_moh(cls, moh: ManagementObject, parent_moh: ManagementObject) -> 'ShutdownComponent':
-    return cls._create_cls_from_moh(cls, 'Msvm_ShutdownComponent', moh, parent_moh)
-
 
 class VirtualMachine(ManagementObject):
   """
@@ -188,6 +174,7 @@ class VirtualMachine(ManagementObject):
   stop, pause, save, reset machine.
   """
   LOG = logging.getLogger('%s.%s' % (__module__, __qualname__))
+  MO_CLS = 'Msvm_ComputerSystem'
   _CLS_MAP_PRIORITY = {
     "Msvm_VirtualSystemSettingData": 0
   }
@@ -214,9 +201,8 @@ class VirtualMachine(ManagementObject):
     :param class_name: class name that will be used for modification
     :param properties: properties to apply
     """
-    management_service = VirtualSystemManagementService.from_moh(
-      self.scope_holder.query_one('SELECT * FROM Msvm_VirtualSystemManagementService')
-    )
+    management_service = self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService').concrete_cls(
+      VirtualSystemManagementService)
     class_instance = self.traverse(self.PATH_MAP[class_name])[0][-1]
     for property_name, property_value in properties.items():
       setattr(class_instance.properties, property_name, property_value)
@@ -354,10 +340,9 @@ class VirtualMachine(ManagementObject):
     :param adapter_name: adapter name
     :return: created adapter
     """
-    management_service = VirtualSystemManagementService.from_moh(
-      self.scope_holder.query_one('SELECT * FROM Msvm_VirtualSystemManagementService')
-    )
-    Msvm_ResourcePool = self.scope_holder.query_one(
+    management_service = self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService').concrete_cls(
+      VirtualSystemManagementService)
+    Msvm_ResourcePool = self.Scope.query_one(
       "SELECT * FROM Msvm_ResourcePool WHERE ResourceSubType = 'Microsoft:Hyper-V:Synthetic Ethernet Port' "
       "AND Primordial = True"
     )
@@ -367,14 +352,16 @@ class VirtualMachine(ManagementObject):
       PropertyNode("PartComponent", transformer=ReferenceTransformer())
     )
     Msvm_VirtualSystemSettingData = self.traverse((VirtualSystemSettingDataNode,))[-1][-1]
-    Msvm_SyntheticEthernetPortSettingData = Msvm_ResourcePool.traverse(Msvm_SyntheticEthernetPortSettingData_Path)[-1][-1]
+    Msvm_SyntheticEthernetPortSettingData = Msvm_ResourcePool.traverse(Msvm_SyntheticEthernetPortSettingData_Path)[-1][
+      -1]
     Msvm_SyntheticEthernetPortSettingData.properties.VirtualSystemIdentifiers = clr_Array[clr_String]([generate_guid()])
     Msvm_SyntheticEthernetPortSettingData.properties.ElementName = adapter_name
     Msvm_SyntheticEthernetPortSettingData.properties.StaticMacAddress = static_mac
     if mac:
       Msvm_SyntheticEthernetPortSettingData.properties.Address = mac
-    result = management_service.AddResourceSettings(Msvm_VirtualSystemSettingData, Msvm_SyntheticEthernetPortSettingData)
-    return VirtualNetworkAdapter.from_moh(result['ResultingResourceSettings'][-1], self)
+    result = management_service.AddResourceSettings(Msvm_VirtualSystemSettingData,
+                                                    Msvm_SyntheticEthernetPortSettingData)
+    return result['ResultingResourceSettings'][-1].concrete_cls(VirtualNetworkAdapter)
 
   def is_connected_to_switch(self, virtual_switch: 'VirtualSwitch'):
     """
@@ -394,10 +381,10 @@ class VirtualMachine(ManagementObject):
     :param vhd_disk: ``VHDDisk`` to add to machine
     """
     # TODO ability to select controller, disk port, error checking. Make disk bootable by default, etc
-    management_service = VirtualSystemManagementService.from_moh(
-      self.scope_holder.query_one('SELECT * FROM Msvm_VirtualSystemManagementService'))
+    management_service = self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService').concrete_cls(
+      VirtualSystemManagementService)
     Msvm_VirtualSystemSettingData = self.get_child((VirtualSystemSettingDataNode,))
-    Msvm_ResourcePool_SyntheticDiskDrive = self.scope_holder.query_one(
+    Msvm_ResourcePool_SyntheticDiskDrive = self.Scope.query_one(
       "SELECT * FROM Msvm_ResourcePool WHERE ResourceSubType = 'Microsoft:Hyper-V:Synthetic Disk Drive' AND Primordial = True")
     Msvm_StorageAllocationSettingData_Path = (
       RelatedNode(("Msvm_AllocationCapabilities", "Msvm_ElementCapabilities", None, None, None, None, False, None)),
@@ -405,7 +392,9 @@ class VirtualMachine(ManagementObject):
       PropertyNode("PartComponent", transformer=ReferenceTransformer())
     )
     IdeController_Path = (
-      RelatedNode(("Msvm_ResourceAllocationSettingData",), selector=PropertiesSelector(ResourceType=5, ResourceSubType='Microsoft:Hyper-V:Emulated IDE Controller', Address=0)),
+      RelatedNode(("Msvm_ResourceAllocationSettingData",), selector=PropertiesSelector(ResourceType=5,
+                                                                                       ResourceSubType='Microsoft:Hyper-V:Emulated IDE Controller',
+                                                                                       Address=0)),
     )
     IdeController = Msvm_VirtualSystemSettingData.get_child(IdeController_Path)
     Msvm_StorageAllocationSettingData = Msvm_ResourcePool_SyntheticDiskDrive.get_child(
@@ -417,7 +406,8 @@ class VirtualMachine(ManagementObject):
       management_service.AddResourceSettings(Msvm_VirtualSystemSettingData, Msvm_StorageAllocationSettingData)[
         'ResultingResourceSettings'][-1]
 
-    Msvm_ResourcePool_VirtualHardDisk = self.scope_holder.query_one("SELECT * FROM Msvm_ResourcePool WHERE ResourceSubType = 'Microsoft:Hyper-V:Virtual Hard Disk' AND Primordial = True")
+    Msvm_ResourcePool_VirtualHardDisk = self.Scope.query_one(
+      "SELECT * FROM Msvm_ResourcePool WHERE ResourceSubType = 'Microsoft:Hyper-V:Virtual Hard Disk' AND Primordial = True")
     virtual_hard_disk_path = (
       RelatedNode(("Msvm_AllocationCapabilities", "Msvm_ElementCapabilities", None, None, None, None, False, None)),
       RelationshipNode(("Msvm_SettingsDefineCapabilities",), selector=PropertiesSelector(ValueRole=0)),
@@ -441,7 +431,7 @@ class VirtualMachine(ManagementObject):
       RelatedNode(("Msvm_SyntheticEthernetPortSettingData",))
     )
     for _, seps in self.traverse(port_to_switch_path):
-      result.append(VirtualNetworkAdapter.from_moh(seps, self))
+      result.append(seps.concrete_cls(VirtualNetworkAdapter))
     return result
 
   @property
@@ -454,11 +444,12 @@ class VirtualMachine(ManagementObject):
     result = []
     com_ports_path = (
       VirtualSystemSettingDataNode,
-      RelatedNode(("Msvm_ResourceAllocationSettingData",), selector=PropertiesSelector(ResourceSubtype="Microsoft:Hyper-V:Serial Controller")),
+      RelatedNode(("Msvm_ResourceAllocationSettingData",),
+                  selector=PropertiesSelector(ResourceSubtype="Microsoft:Hyper-V:Serial Controller")),
       RelatedNode(("Msvm_SerialPortSettingData",))
     )
     for _, _, com_port in self.traverse(com_ports_path):
-      result.append(VirtualComPort.from_moh(com_port, self))
+      result.append(com_port.concrete_cls(VirtualComPort))
     return result
 
   def get_com_port(self, port: ComPort):
@@ -485,7 +476,7 @@ class VirtualMachine(ManagementObject):
       operational_status = ShutdownComponent_OperationalStatus.from_code(
         shutdown_component.properties['OperationalStatus'][0])
       if operational_status in (ShutdownComponent_OperationalStatus.OK, ShutdownComponent_OperationalStatus.Degraded):
-        return ShutdownComponent.from_moh(shutdown_component, self)
+        return shutdown_component.concrete_cls(ShutdownComponent)
     return None
 
   @property
@@ -503,11 +494,6 @@ class VirtualMachine(ManagementObject):
       ComputerSystem_RequestStateChange_ReturnCodes.Method_Parameters_Checked_Transition_Started
     )
 
-  @classmethod
-  def from_moh(cls, moh: ManagementObject, parent_moh: ManagementObject = None) -> 'VirtualMachine':
-    return VirtualMachine(moh.Path)
-    # return cls._create_cls_from_moh(cls, 'Msvm_ComputerSystem', moh, parent_moh)
-
 
 class HypervHost(object):
   """
@@ -521,40 +507,40 @@ class HypervHost(object):
 
   @property
   def switches(self) -> List[VirtualSwitch]:
-    machines = self.scope.query('SELECT * FROM Msvm_VirtualEthernetSwitch')
-    return [VirtualSwitch.from_moh(_machine) for _machine in machines] if machines else []
+    switches = self.scope.query('SELECT * FROM Msvm_VirtualEthernetSwitch')
+    return [_switch.concrete_cls(VirtualSwitch) for _switch in switches] if switches else []
 
   def switches_by_name(self, name) -> VirtualSwitch:
-    machines = self.scope.query('SELECT * FROM Msvm_VirtualEthernetSwitch WHERE ElementName = "%s"' % name)
-    return [VirtualSwitch.from_moh(_machine) for _machine in machines] if machines else []
+    switches = self.scope.query('SELECT * FROM Msvm_VirtualEthernetSwitch WHERE ElementName = "%s"' % name)
+    return [_switch.concrete_cls(VirtualSwitch) for _switch in switches] if switches else []
 
   def switch_by_id(self, switch_id) -> VirtualSwitch:
-    machines = self.scope.query('SELECT * FROM Msvm_VirtualEthernetSwitch WHERE Name = "%s"' % switch_id)
-    return [VirtualSwitch.from_moh(_machine) for _machine in machines] if machines else []
+    switches = self.scope.query('SELECT * FROM Msvm_VirtualEthernetSwitch WHERE Name = "%s"' % switch_id)
+    return [_switch.concrete_cls(VirtualSwitch) for _switch in switches] if switches else []
 
   @property
   def machines(self) -> List[VirtualMachine]:
     machines = self.scope.query('SELECT * FROM Msvm_ComputerSystem WHERE Caption = "Virtual Machine"')
-    return [VirtualMachine.from_moh(_machine) for _machine in machines] if machines else []
+    return [_machine.concrete_cls(VirtualMachine) for _machine in machines] if machines else []
 
   def machines_by_name(self, name) -> List[VirtualMachine]:
     machines = self.scope.query(
       'SELECT * FROM Msvm_ComputerSystem WHERE Caption = "Virtual Machine" AND ElementName = "%s"' % name)
-    return [VirtualMachine.from_moh(_machine) for _machine in machines] if machines else []
+    return [_machine.concrete_cls(VirtualMachine) for _machine in machines] if machines else []
 
   def machine_by_id(self, machine_id) -> VirtualMachine:
     machines = self.scope.query(
       'SELECT * FROM Msvm_ComputerSystem WHERE Caption = "Virtual Machine" AND Name = "%s"' % machine_id)
-    return [VirtualMachine.from_moh(_machine) for _machine in machines] if machines else []
+    return [_machine.concrete_cls(VirtualMachine) for _machine in machines] if machines else []
 
   def create_machine(self, name, properties_group: Dict[str, Dict[str, Any]] = None,
                      machine_generation: VirtualMachineGeneration = VirtualMachineGeneration.GEN1) -> VirtualMachine:
-    management_service = VirtualSystemManagementService.from_moh(
-      self.scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService'))
+    management_service = self.scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService').concrete_cls(
+      VirtualSystemManagementService)
     Msvm_VirtualSystemSettingData = self.scope.cls_instance("Msvm_VirtualSystemSettingData")
     Msvm_VirtualSystemSettingData.properties.ElementName = name
     Msvm_VirtualSystemSettingData.properties.VirtualSystemSubType = machine_generation.value
     result = management_service.DefineSystem(SystemSettings=Msvm_VirtualSystemSettingData)
-    vm = VirtualMachine.from_moh(result['ResultingSystem'])
+    vm = result['ResultingSystem'].concrete_cls(VirtualMachine)
     vm.apply_properties_group(properties_group)
     return vm

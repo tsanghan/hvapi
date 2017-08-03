@@ -1,7 +1,8 @@
 import collections
 from typing import List, Sequence
 
-from hvapi.clr.imports import Guid, CimType, String, ManagementScope, ObjectQuery, ManagementObjectSearcher, ManagementClass, ManagementException, ManagementObject, Array
+from hvapi.clr.imports import Guid, CimType, String, ManagementScope, ObjectQuery, ManagementObjectSearcher, \
+  ManagementClass, ManagementException, ManagementObject, Array
 from hvapi.clr.traversal import Node, recursive_traverse
 from hvapi.common_types import RangedCodeEnum
 
@@ -34,6 +35,44 @@ class CimTypeTransformer(object):
     if value == CimType.Boolean:
       return bool
     raise Exception("unknown type")
+
+
+def opencls(cls):
+  def update(extension):
+    for k, v in extension.__dict__.items():
+      if k != '__dict__':
+        try:
+          setattr(cls, k, v)
+        except AttributeError as e:
+          if "attribute is read-only" in str(e):
+            pass
+          else:
+            raise
+    return cls
+
+  return update
+
+
+@opencls(ManagementScope)
+class ManagementScope(object):
+  def query(self, query, parent=None) -> List['ManagementObject']:
+    result = []
+    query_obj = ObjectQuery(query)
+    searcher = ManagementObjectSearcher(self, query_obj)
+    for man_object in searcher.Get():
+      result.append(man_object)
+    return result
+
+  def query_one(self, query) -> 'ManagementObject':
+    result = self.query(query)
+    if len(result) > 1:
+      raise Exception("Got too many results for query '%s'" % query)
+    if result:
+      return result[0]
+
+  def cls_instance(self, class_name):
+    cls = ManagementClass(str(self.Path) + ":" + class_name)
+    return cls.CreateInstance()
 
 
 class ScopeHolder(object):
@@ -97,24 +136,19 @@ class PropertiesHolder(object):
     return self.management_object.Properties[item].Value
 
 
-def opencls(cls):
-  def update(extension):
-    for k, v in extension.__dict__.items():
-      if k != '__dict__':
-        try:
-          setattr(cls, k, v)
-        except AttributeError as e:
-          if "attribute is read-only" in str(e):
-            pass
-          else:
-            raise
-    return cls
-
-  return update
-
-
 @opencls(ManagementObject)
 class ManagementObject(object):
+  def concrete_cls(self, cls):
+    if not issubclass(cls, ManagementObject):
+      raise ValueError("Class '{0}' is not and subclass of 'ManagementObject'".format(cls.__name__))
+    if hasattr(cls, "MO_CLS"):
+      mo_cls = getattr(cls, "MO_CLS")
+      if self.ClassPath.ClassName not in mo_cls:
+        raise ValueError('Given ManagementObject is not %s' % mo_cls)
+      return cls(self.Path)
+    else:
+      raise ValueError("Class '{0}' does not contain 'MO_CLS' record".format(cls.__name__))
+
   def reload(self):
     self.Get()
 
@@ -139,7 +173,7 @@ class ManagementObject(object):
     """
     return recursive_traverse(traverse_path, self)
 
-  def get_child(self, traverse_path: Sequence[Node]):
+  def get_child(self, traverse_path: Sequence[Node]) -> ManagementObject:
     """
     Get one child item from given path.
 
@@ -152,7 +186,7 @@ class ManagementObject(object):
     return traverse_result[-1][-1]
 
   def invoke(self, method_name, **kwargs):
-    parameters = self.management_object.GetMethodParameters(method_name)
+    parameters = self.GetMethodParameters(method_name)
     for parameter in parameters.Properties:
       parameter_name = parameter.Name
       parameter_type = CimTypeTransformer.target_class(parameter.Type)
@@ -173,7 +207,7 @@ class ManagementObject(object):
 
       parameters.Properties[parameter_name].Value = parameter_value
 
-    invocation_result = self.management_object.InvokeMethod(method_name, parameters, None)
+    invocation_result = self.InvokeMethod(method_name, parameters, None)
     transformed_result = {}
     for _property in invocation_result.Properties:
       _property_type = CimTypeTransformer.target_class(_property.Type)
@@ -190,7 +224,7 @@ class ManagementObject(object):
     return self.Clone()
 
   def __str__(self):
-    return str(self.management_object)
+    return str(self)
 
   # TODO move invoke static stuff to separate fle
   @staticmethod
@@ -236,7 +270,7 @@ class ManagementObject(object):
     return_value = codes_enum.from_code(result['ReturnValue'])
     if return_value == job_value:
       from hvapi.clr.classes_wrappers import JobWrapper
-      JobWrapper.from_moh(result['Job']).wait()
+      result['Job'].concrete_cls(JobWrapper).wait()
       return result
     if return_value != ok_value:
       raise InvocationException("Failed execute method with return value '%s'" % return_value.name)
