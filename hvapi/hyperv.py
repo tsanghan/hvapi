@@ -40,6 +40,8 @@ DEFAULT_WAIT_OP_TIMEOUT = 60
 
 
 class VirtualSwitch(ManagementObject):
+  MO_CLS = 'Msvm_VirtualEthernetSwitch'
+
   @property
   def name(self):
     return self.properties['ElementName']
@@ -51,7 +53,6 @@ class VirtualSwitch(ManagementObject):
   def __eq__(self, other):
     if other:
       return self.id == other.id and self.name == other.name
-
 
 
 class AdapterGuestSettings(ManagementObject):
