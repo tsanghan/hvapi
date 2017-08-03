@@ -19,7 +19,8 @@ class JobWrapper(ManagementObject):
 
   @classmethod
   def from_moh(cls, moh: 'ManagementObject', parent_moh: ManagementObject = None) -> 'JobWrapper':
-    return cls._create_cls_from_moh(cls, ('Msvm_ConcreteJob', 'Msvm_StorageJob'), moh, parent_moh)
+    return JobWrapper(moh.Path)
+    # return cls._create_cls_from_moh(cls, ('Msvm_ConcreteJob', 'Msvm_StorageJob'), moh, parent_moh)
 
 
 class VirtualSystemManagementService(ManagementObject):
@@ -71,5 +72,6 @@ class VirtualSystemManagementService(ManagementObject):
     )
 
   @classmethod
-  def from_moh(cls, moh: 'ManagementObjectHolder', parent_moh: ManagementObject = None) -> 'VirtualSystemManagementService':
-    return cls._create_cls_from_moh(cls, 'Msvm_VirtualSystemManagementService', moh, parent_moh)
+  def from_moh(cls, moh: 'ManagementObject', parent_moh: ManagementObject = None) -> 'VirtualSystemManagementService':
+    return VirtualSystemManagementService(moh.Path)
+    # return cls._create_cls_from_moh(cls, 'Msvm_VirtualSystemManagementService', moh, parent_moh)

@@ -1,19 +1,9 @@
-import clr
 import collections
-import xml.etree.ElementTree as ET
-from enum import Enum
-from typing import Tuple, Callable, Iterable, Union, List, Any, Sized
+from typing import List, Sequence
 
+from hvapi.clr.imports import Guid, CimType, String, ManagementScope, ObjectQuery, ManagementObjectSearcher, ManagementClass, ManagementException, ManagementObject, Array
+from hvapi.clr.traversal import Node, recursive_traverse
 from hvapi.common_types import RangedCodeEnum
-
-clr.AddReference("System.Management")
-from System.Management import ManagementScope, ObjectQuery, ManagementObjectSearcher, ManagementObject, CimType, ManagementException, ManagementClass
-from System import Array, String, Guid
-
-# WARNING, clr_Array accepts iterable, e.g. if you will pass string - it will be array of its chars, not array of one
-# string. clr_Array[clr_String](["hello"]) equals to array with one "hello" string in it
-clr_Array = Array
-clr_String = String
 
 
 def generate_guid(fmt="B"):
@@ -44,107 +34,6 @@ class CimTypeTransformer(object):
     if value == CimType.Boolean:
       return bool
     raise Exception("unknown type")
-
-
-class PropertyTransformer(object):
-  @staticmethod
-  def transform(property_value, parent: ManagementObject) -> ManagementObject:
-    raise NotImplementedError
-
-
-class NullTransformer(PropertyTransformer):
-  @staticmethod
-  def transform(property_value, parent: ManagementObject) -> ManagementObject:
-    raise NotImplementedError
-
-
-class ReferenceTransformer(PropertyTransformer):
-  @staticmethod
-  def transform(property_value, parent: ManagementObject) -> ManagementObject:
-    return ManagementObject(property_value)
-
-
-class MOHTransformers(object):
-  @staticmethod
-  def from_reference(object_reference: str, parent: ManagementObject) -> 'ManagementObject':
-    return ManagementObject(object_reference)
-
-
-class Selector(object):
-  def is_acceptable(self, management_object: ManagementObject):
-    raise NotImplementedError
-
-
-class NullSelector(Selector):
-  def is_acceptable(self, management_object: ManagementObject):
-    return True
-
-
-class PropertiesSelector(Selector):
-  def __init__(self, **kwargs):
-    self.properties = kwargs
-
-  def is_acceptable(self, management_object: ManagementObject):
-    for property_name, expected_value in self.properties:
-      if str(management_object.properties[property_name]) != str(expected_value):
-        return False
-    return True
-
-
-class PropertyNode(object):
-  def __init__(self, property_name, is_array: bool = False, transformer: PropertyTransformer = NullTransformer(), selector: Selector = NullSelector()):
-    self.property_name = property_name
-    self.is_array = is_array
-    self.transformer = transformer
-    self.selector = selector
-    pass
-
-  def get_node_objects(self, management_object: ManagementObject):
-    results = []
-    val = management_object.Properties[self.property_name].Value
-    if not self.is_array:
-      _result = self.transformer.transform(val, management_object)
-      if self.selector.is_acceptable(_result):
-        results.append(_result)
-    else:
-      for val_item in val:
-        _result = self.transformer.transform(val_item, management_object)
-        if self.selector.is_acceptable(_result):
-          results.append(_result)
-    return results
-
-
-class RelatedNode(object):
-  def __init__(self, related_arguments, selector: Selector = NullSelector()):
-    self.related_arguments = related_arguments
-    self.selector = selector
-
-  def get_node_objects(self, management_object: ManagementObject):
-    results = []
-    for rel_object in management_object.GetRelated(*self.related_arguments):
-      if not management_object == rel_object:
-        _result = rel_object
-        if self.selector.is_acceptable(_result):
-          results.append(_result)
-    return results
-
-
-class RelationshipNode(object):
-  def __init__(self, relationship_arguments, selector: Selector = NullSelector()):
-    self.relationship_arguments = relationship_arguments
-    self.selector = selector
-
-  def get_node_objects(self, management_object: ManagementObject):
-    results = []
-    for rel_object in management_object.GetRelationships(*self.relationship_arguments):
-      if not management_object == rel_object:
-        _result = rel_object
-        if self.selector.is_acceptable(_result):
-          results.append(_result)
-    return results
-
-
-VirtualSystemSettingDataNode = RelationshipNode(("Msvm_VirtualSystemSettingData", "Msvm_SettingsDefineState", None, None, "SettingData", "ManagedElement", False, None))
 
 
 class ScopeHolder(object):
@@ -240,7 +129,7 @@ class ManagementObject(object):
       result[_property.Name] = _property.Value
     return result
 
-  def traverse(self, traverse_path: Iterable[Node]) -> List[List[ManagementObject]]:
+  def traverse(self, traverse_path: Sequence[Node]) -> List[List[ManagementObject]]:
     """
     Traverse through management object hierarchy based on given path.
     Return all found path from given object to target object.
@@ -248,9 +137,9 @@ class ManagementObject(object):
     :param traverse_path:
     :return: list of found paths
     """
-    return self._internal_traversal(traverse_path, self)
+    return recursive_traverse(traverse_path, self)
 
-  def get_child(self, traverse_path: Iterable[Node]):
+  def get_child(self, traverse_path: Sequence[Node]):
     """
     Get one child item from given path.
 
@@ -303,6 +192,7 @@ class ManagementObject(object):
   def __str__(self):
     return str(self.management_object)
 
+  # TODO move invoke static stuff to separate fle
   @staticmethod
   def invoke_transform_object(obj, expected_type=None):
     """
@@ -340,67 +230,6 @@ class ManagementObject(object):
         return String(obj)
 
     raise Exception("Unknown object to transform: '%s'" % obj)
-
-  @staticmethod
-  def _get_node_objects(parent_object: 'ManagementObject', node: 'Node'):
-    results = []
-    if node.relation_type == Relation.PROPERTY:
-      val = parent_object.Properties[node.path_args[0]].Value
-      if node.property_type == Property.SINGLE:
-        _result = node.property_transformer(val, parent_object)
-        if node.selector:
-          if node.selector(_result):
-            results.append(_result)
-        else:
-          results.append(_result)
-      elif node.property_type == Property.ARRAY:
-        for val_item in val:
-          _result = node.property_transformer(val_item)
-          if node.selector:
-            if node.selector(_result):
-              results.append(_result)
-          else:
-            results.append(_result)
-      else:
-        raise Exception("Unknown property type")
-      return results
-    elif node.relation_type == Relation.RELATED:
-      for rel_object in parent_object.GetRelated(*node.path_args):
-        if not parent_object == rel_object:
-          _result = rel_object
-          if node.selector:
-            if node.selector(_result):
-              results.append(_result)
-          else:
-            results.append(_result)
-      return results
-    elif node.relation_type == Relation.RELATIONSHIP:
-      for rel_object in parent_object.GetRelationships(*node.path_args):
-        if not parent_object == rel_object:
-          _result = rel_object
-          if node.selector:
-            if node.selector(_result):
-              results.append(_result)
-          else:
-            results.append(_result)
-      return results
-    else:
-      raise Exception("Unknown path part type")
-
-  @classmethod
-  def _internal_traversal(cls, traverse_path: Union[Sized, Iterable[Node]], parent: 'ManagementObject'):
-    results = []
-    if len(traverse_path) == 1:
-      for obj in cls._get_node_objects(parent, traverse_path[0]):
-        results.append([obj])
-      return results
-    else:
-      for obj in cls._get_node_objects(parent, traverse_path[0]):
-        for children in cls._internal_traversal(traverse_path[1:], obj):
-          cur_res = [obj]
-          cur_res.extend(children)
-          results.append(cur_res)
-      return results
 
   @staticmethod
   def _evaluate_invocation_result(result, codes_enum: RangedCodeEnum, ok_value, job_value):

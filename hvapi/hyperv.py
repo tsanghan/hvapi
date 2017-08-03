@@ -25,12 +25,11 @@ import logging
 import time
 from typing import List, Dict, Any
 
-from hvapi.clr.types import ComputerSystem_RequestStateChange_RequestedState, \
-  ComputerSystem_RequestStateChange_ReturnCodes, ComputerSystem_EnabledState, ShutdownComponent_OperationalStatus, \
-  ShutdownComponent_ShutdownComponent_ReturnCodes
-from hvapi.clr.base import ScopeHolder, ManagementObject, Node, Relation, \
-  VirtualSystemSettingDataNode, Property, MOHTransformers, PropertySelector, generate_guid, clr_Array, clr_String, \
-  ListPropertySelector, RelatedNode, RelationshipNode, PropertiesSelector, PropertyNode, ReferenceTransformer
+from hvapi.clr.types import (ComputerSystem_RequestStateChange_RequestedState, ComputerSystem_RequestStateChange_ReturnCodes, ComputerSystem_EnabledState,
+                             ShutdownComponent_OperationalStatus, ShutdownComponent_ShutdownComponent_ReturnCodes)
+from hvapi.clr.imports import clr_Array, clr_String
+from hvapi.clr.base import ScopeHolder, ManagementObject, generate_guid
+from hvapi.clr.traversal import ReferenceTransformer, PropertiesSelector, PropertyNode, RelatedNode, RelationshipNode, VirtualSystemSettingDataNode
 from hvapi.clr.classes_wrappers import VirtualSystemManagementService
 from hvapi.disk.vhd import VHDDisk
 from hvapi.types import VirtualMachineGeneration, VirtualMachineState, ComPort
@@ -439,7 +438,7 @@ class VirtualMachine(ManagementObject):
     result = []
     port_to_switch_path = (
       VirtualSystemSettingDataNode,
-      Node(Relation.RELATED, "Msvm_SyntheticEthernetPortSettingData"),
+      RelatedNode(("Msvm_SyntheticEthernetPortSettingData",))
     )
     for _, seps in self.traverse(port_to_switch_path):
       result.append(VirtualNetworkAdapter.from_moh(seps, self))
