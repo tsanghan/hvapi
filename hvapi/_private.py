@@ -27,12 +27,15 @@ from hvapi.clr.base import JobException, ManagementObject
 from hvapi.clr.invoke import evaluate_invocation_result
 
 
-class JobWrapper(ManagementObject):
-  MO_CLS = ('Msvm_ConcreteJob', 'Msvm_StorageJob')
-
-  def __init__(self, mo: ManagementObject):
-    self.check_class(self.MO_CLS)
+class MOWrapper(ManagementObject):
+  def __init__(self, mo: ManagementObject, parent: 'MOWrapper' = None):
     self.Path = mo.Path
+    self.check_class(self.MO_CLS)
+    self.parent = parent
+
+
+class JobWrapper(MOWrapper):
+  MO_CLS = ('Msvm_ConcreteJob', 'Msvm_StorageJob')
 
   def wait(self):
     job_state = Msvm_ConcreteJob_JobState.from_code(self.properties['JobState'])
@@ -45,12 +48,8 @@ class JobWrapper(ManagementObject):
       raise JobException(self)
 
 
-class VirtualSystemManagementService(ManagementObject):
+class VirtualSystemManagementService(MOWrapper):
   MO_CLS = 'Msvm_VirtualSystemManagementService'
-
-  def __init__(self, mo: ManagementObject):
-    self.check_class(self.MO_CLS)
-    self.Path = mo.Path
 
   def SetGuestNetworkAdapterConfiguration(self, ComputerSystem, *args):
     out_objects = self.invoke("SetGuestNetworkAdapterConfiguration", ComputerSystem=ComputerSystem,

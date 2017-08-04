@@ -142,7 +142,7 @@ class PropertiesHolder(object):
 class ManagementObject(object):
   def check_class(self, cls):
     if self.ClassPath.ClassName not in cls:
-      raise ValueError('Given ManagementObject is not %s' % cls)
+      raise ValueError('Given ManagementObject is not %s' % str(cls))
 
   def reload(self):
     self.Get()

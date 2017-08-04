@@ -23,8 +23,8 @@ import logging
 import time
 from typing import List, Dict, Any
 
-from hvapi._private import VirtualSystemManagementService
-from hvapi.clr.base import ScopeHolder, ManagementObject, generate_guid
+from hvapi._private import VirtualSystemManagementService, MOWrapper
+from hvapi.clr.base import ScopeHolder, generate_guid
 from hvapi.clr.imports import clr_Array, clr_String
 from hvapi.clr.invoke import evaluate_invocation_result
 from hvapi.clr.traversal import ReferenceTransformer, PropertiesSelector, PropertyNode, RelatedNode, RelationshipNode, \
@@ -38,12 +38,8 @@ from hvapi.types import VirtualMachineGeneration, VirtualMachineState, ComPort, 
 DEFAULT_WAIT_OP_TIMEOUT = 60
 
 
-class VirtualSwitch(ManagementObject):
+class VirtualSwitch(MOWrapper):
   MO_CLS = 'Msvm_VirtualEthernetSwitch'
-
-  def __init__(self, mo: ManagementObject):
-    self.check_class(self.MO_CLS)
-    self.Path = mo.Path
 
   @property
   def name(self):
@@ -58,15 +54,11 @@ class VirtualSwitch(ManagementObject):
       return self.id == other.id and self.name == other.name
 
 
-class AdapterGuestSettings(ManagementObject):
+class AdapterGuestSettings(MOWrapper):
   """
   Class for managing virtual adapter guest settings. Can be used to inject static or dhcp ip settings.
   """
   MO_CLS = 'Msvm_GuestNetworkAdapterConfiguration'
-
-  def __init__(self, mo: ManagementObject):
-    self.check_class(self.MO_CLS)
-    self.Path = mo.Path
 
   @property
   def dhcp(self):
@@ -86,12 +78,8 @@ class AdapterGuestSettings(ManagementObject):
     management_service.SetGuestNetworkAdapterConfiguration(computer_system, self)
 
 
-class VirtualNetworkAdapter(ManagementObject):
+class VirtualNetworkAdapter(MOWrapper):
   MO_CLS = 'Msvm_SyntheticEthernetPortSettingData'
-
-  def __init__(self, mo: ManagementObject):
-    self.check_class(self.MO_CLS)
-    self.Path = mo.Path
 
   @property
   def address(self) -> str:
@@ -121,7 +109,7 @@ class VirtualNetworkAdapter(ManagementObject):
     settings_path = (
       RelatedNode(("Msvm_GuestNetworkAdapterConfiguration",)),
     )
-    return AdapterGuestSettings(self.get_child(settings_path))
+    return AdapterGuestSettings(self.get_child(settings_path), self)
 
   def connect(self, virtual_switch: 'VirtualSwitch'):
     """
@@ -144,12 +132,8 @@ class VirtualNetworkAdapter(ManagementObject):
     management_service.AddResourceSettings(Msvm_VirtualSystemSettingData, Msvm_EthernetPortAllocationSettingData)
 
 
-class VirtualComPort(ManagementObject):
+class VirtualComPort(MOWrapper):
   MO_CLS = 'Msvm_SerialPortSettingData'
-
-  def __init__(self, mo: ManagementObject):
-    self.check_class(self.MO_CLS)
-    self.Path = mo.Path
 
   @property
   def name(self) -> str:
@@ -167,12 +151,8 @@ class VirtualComPort(ManagementObject):
     management_service.ModifyResourceSettings(self)
 
 
-class ShutdownComponent(ManagementObject):
+class ShutdownComponent(MOWrapper):
   MO_CLS = 'Msvm_ShutdownComponent'
-
-  def __init__(self, mo: ManagementObject):
-    self.check_class(self.MO_CLS)
-    self.Path = mo.Path
 
   def InitiateShutdown(self, Force, Reason):
     out_objects = self.invoke("InitiateShutdown", Force=Force, Reason=Reason)
@@ -184,7 +164,7 @@ class ShutdownComponent(ManagementObject):
     )
 
 
-class VirtualMachine(ManagementObject):
+class VirtualMachine(MOWrapper):
   """
   Represents virtual machine. Gives access to machine name and id, network adapters, gives ability to start,
   stop, pause, save, reset machine.
@@ -209,10 +189,6 @@ class VirtualMachine(ManagementObject):
   }
   RESOURCE_CLASSES = ("Msvm_ProcessorSettingData", "Msvm_MemorySettingData")
   SYSTEM_CLASSES = ("Msvm_VirtualSystemSettingData",)
-
-  def __init__(self, mo: ManagementObject):
-    self.check_class(self.MO_CLS)
-    self.Path = mo.Path
 
   def apply_properties(self, class_name: str, properties: Dict[str, Any]):
     """
@@ -379,7 +355,7 @@ class VirtualMachine(ManagementObject):
       Msvm_SyntheticEthernetPortSettingData.properties.Address = mac
     result = management_service.AddResourceSettings(Msvm_VirtualSystemSettingData,
                                                     Msvm_SyntheticEthernetPortSettingData)
-    return VirtualNetworkAdapter(result['ResultingResourceSettings'][-1])
+    return VirtualNetworkAdapter(result['ResultingResourceSettings'][-1], self)
 
   def is_connected_to_switch(self, virtual_switch: 'VirtualSwitch'):
     """
@@ -448,7 +424,7 @@ class VirtualMachine(ManagementObject):
       RelatedNode(("Msvm_SyntheticEthernetPortSettingData",))
     )
     for _, Msvm_SyntheticEthernetPortSettingData in self.traverse(port_to_switch_path):
-      result.append(VirtualNetworkAdapter(Msvm_SyntheticEthernetPortSettingData))
+      result.append(VirtualNetworkAdapter(Msvm_SyntheticEthernetPortSettingData, self))
     return result
 
   @property
@@ -466,7 +442,7 @@ class VirtualMachine(ManagementObject):
       RelatedNode(("Msvm_SerialPortSettingData",))
     )
     for _, _, Msvm_SerialPortSettingData in self.traverse(com_ports_path):
-      result.append(VirtualComPort(Msvm_SerialPortSettingData))
+      result.append(VirtualComPort(Msvm_SerialPortSettingData, self))
     return result
 
   def get_com_port(self, port: ComPort):
