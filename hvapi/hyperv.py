@@ -64,15 +64,17 @@ class AdapterGuestSettings(MOWrapper):
   def dhcp(self):
     return self.properties['DHCPEnabled']
 
-  @dhcp.setter
-  def dhcp(self, value):
-    # todo fail on running machine
+  @property
+  def ip(self):
+    return self.properties['IPAddresses']
+
+  def set_ip_settings(self, dhcp=True, ip=[], sub_nets=[], gateways=[], dns=[]):
     management_service = VirtualSystemManagementService(self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService'))
-    self.properties.DHCPEnabled = value
-    self.properties.IPAddresses = []
-    self.properties.Subnets = []
-    self.properties.DefaultGateways = []
-    self.properties.DNSServers = []
+    self.properties.DHCPEnabled = dhcp
+    self.properties.IPAddresses = ip
+    self.properties.Subnets = sub_nets
+    self.properties.DefaultGateways = gateways
+    self.properties.DNSServers = dns
     self.properties.ProtocolIFType = 4096
     computer_system = self.parent.parent
     management_service.SetGuestNetworkAdapterConfiguration(computer_system, self)
