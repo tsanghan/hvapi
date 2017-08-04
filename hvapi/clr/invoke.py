@@ -19,7 +19,8 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
-from hvapi.clr.base import ManagementObject, InvocationException
+from hvapi.clr.base import ManagementObject
+from hvapi.clr.types import InvocationException
 from hvapi.clr.imports import String
 from hvapi.common import RangedCodeEnum
 
@@ -76,7 +77,7 @@ def evaluate_invocation_result(result, codes_enum: RangedCodeEnum, ok_value, job
   return_value = codes_enum.from_code(result['ReturnValue'])
   if return_value == job_value:
     from hvapi._private import JobWrapper
-    result['Job'].concrete_cls(JobWrapper).wait()
+    JobWrapper(result['Job']).wait()
     return result
   if return_value != ok_value:
     raise InvocationException("Failed execute method with return value '%s'" % return_value.name)

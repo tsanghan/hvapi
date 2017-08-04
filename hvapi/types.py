@@ -22,6 +22,14 @@
 from enum import Enum
 
 
+class NotFoundException(Exception):
+  pass
+
+
+class TooManyResultsException(Exception):
+  pass
+
+
 class VirtualMachineGeneration(str, Enum):
   GEN1 = "Microsoft:Hyper-V:SubType:1"
   GEN2 = "Microsoft:Hyper-V:SubType:2"

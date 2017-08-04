@@ -29,7 +29,7 @@ FORMAT = "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
 logging.basicConfig(format=FORMAT, level=logging.DEBUG)
 
 host = HypervHost()
-machine = host.machines_by_name("centos7")[-1]
+machine = host.machine_by_name("centos7")
 adapters = machine.network_adapters
 for adapter in adapters:
   switch = adapter.switch

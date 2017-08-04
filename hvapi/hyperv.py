@@ -33,13 +33,17 @@ from hvapi.clr.types import (ComputerSystem_RequestStateChange_RequestedState,
                              ComputerSystem_RequestStateChange_ReturnCodes, ComputerSystem_EnabledState,
                              ShutdownComponent_OperationalStatus, ShutdownComponent_ShutdownComponent_ReturnCodes)
 from hvapi.disk.vhd import VHDDisk
-from hvapi.types import VirtualMachineGeneration, VirtualMachineState, ComPort
+from hvapi.types import VirtualMachineGeneration, VirtualMachineState, ComPort, NotFoundException, TooManyResultsException
 
 DEFAULT_WAIT_OP_TIMEOUT = 60
 
 
 class VirtualSwitch(ManagementObject):
   MO_CLS = 'Msvm_VirtualEthernetSwitch'
+
+  def __init__(self, mo: ManagementObject):
+    self.check_class(self.MO_CLS)
+    self.Path = mo.Path
 
   @property
   def name(self):
@@ -60,6 +64,10 @@ class AdapterGuestSettings(ManagementObject):
   """
   MO_CLS = 'Msvm_GuestNetworkAdapterConfiguration'
 
+  def __init__(self, mo: ManagementObject):
+    self.check_class(self.MO_CLS)
+    self.Path = mo.Path
+
   @property
   def dhcp(self):
     return self.properties['DHCPEnabled']
@@ -67,8 +75,7 @@ class AdapterGuestSettings(ManagementObject):
   @dhcp.setter
   def dhcp(self, value):
     # todo fail on running machine
-    management_service = self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService').concrete_cls(
-      VirtualSystemManagementService)
+    management_service = VirtualSystemManagementService(self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService'))
     self.properties.DHCPEnabled = value
     self.properties.IPAddresses = []
     self.properties.Subnets = []
@@ -82,6 +89,10 @@ class AdapterGuestSettings(ManagementObject):
 class VirtualNetworkAdapter(ManagementObject):
   MO_CLS = 'Msvm_SyntheticEthernetPortSettingData'
 
+  def __init__(self, mo: ManagementObject):
+    self.check_class(self.MO_CLS)
+    self.Path = mo.Path
+
   @property
   def address(self) -> str:
     return self.properties['Address']
@@ -94,7 +105,7 @@ class VirtualNetworkAdapter(ManagementObject):
       PropertyNode("HostResource", transformer=ReferenceTransformer())
     )
     for _, virtual_switch in self.traverse(port_to_switch_path):
-      result.append(virtual_switch.concrete_cls(VirtualSwitch))
+      result.append(VirtualSwitch(virtual_switch))
     if len(result) > 1:
       raise Exception("Something horrible happened, virtual network adapter connected to more that one virtual switch")
     if result:
@@ -110,7 +121,7 @@ class VirtualNetworkAdapter(ManagementObject):
     settings_path = (
       RelatedNode(("Msvm_GuestNetworkAdapterConfiguration",)),
     )
-    return self.get_child(settings_path).concrete_cls(AdapterGuestSettings)
+    return AdapterGuestSettings(self.get_child(settings_path))
 
   def connect(self, virtual_switch: 'VirtualSwitch'):
     """
@@ -118,11 +129,9 @@ class VirtualNetworkAdapter(ManagementObject):
 
     :param virtual_switch: virtual switch to connect
     """
-    management_service = self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService').concrete_cls(
-      VirtualSystemManagementService)
+    management_service = VirtualSystemManagementService(self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService'))
     Msvm_VirtualSystemSettingData = self.traverse((RelatedNode(("Msvm_VirtualSystemSettingData",)),))[-1][-1]
-    Msvm_ResourcePool = self.Scope.query_one(
-      "SELECT * FROM Msvm_ResourcePool WHERE ResourceSubType = 'Microsoft:Hyper-V:Ethernet Connection' AND Primordial = True")
+    Msvm_ResourcePool = self.Scope.query_one("SELECT * FROM Msvm_ResourcePool WHERE ResourceSubType = 'Microsoft:Hyper-V:Ethernet Connection' AND Primordial = True")
     Msvm_EthernetPortAllocationSettingData_Path = (
       RelatedNode(("Msvm_AllocationCapabilities", "Msvm_ElementCapabilities", None, None, None, None, False, None)),
       RelationshipNode(("Msvm_SettingsDefineCapabilities",), selector=PropertiesSelector(ValueRole=0)),
@@ -138,6 +147,10 @@ class VirtualNetworkAdapter(ManagementObject):
 class VirtualComPort(ManagementObject):
   MO_CLS = 'Msvm_SerialPortSettingData'
 
+  def __init__(self, mo: ManagementObject):
+    self.check_class(self.MO_CLS)
+    self.Path = mo.Path
+
   @property
   def name(self) -> str:
     return self.properties.ElementName
@@ -149,14 +162,17 @@ class VirtualComPort(ManagementObject):
 
   @path.setter
   def path(self, value):
-    management_service = self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService').concrete_cls(
-      VirtualSystemManagementService)
+    management_service = VirtualSystemManagementService(self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService'))
     self.properties.Connection = [value]
     management_service.ModifyResourceSettings(self)
 
 
 class ShutdownComponent(ManagementObject):
   MO_CLS = 'Msvm_ShutdownComponent'
+
+  def __init__(self, mo: ManagementObject):
+    self.check_class(self.MO_CLS)
+    self.Path = mo.Path
 
   def InitiateShutdown(self, Force, Reason):
     out_objects = self.invoke("InitiateShutdown", Force=Force, Reason=Reason)
@@ -194,6 +210,10 @@ class VirtualMachine(ManagementObject):
   RESOURCE_CLASSES = ("Msvm_ProcessorSettingData", "Msvm_MemorySettingData")
   SYSTEM_CLASSES = ("Msvm_VirtualSystemSettingData",)
 
+  def __init__(self, mo: ManagementObject):
+    self.check_class(self.MO_CLS)
+    self.Path = mo.Path
+
   def apply_properties(self, class_name: str, properties: Dict[str, Any]):
     """
     Apply ``properties`` for ``class_name`` that associated with virtual machine.
@@ -201,8 +221,7 @@ class VirtualMachine(ManagementObject):
     :param class_name: class name that will be used for modification
     :param properties: properties to apply
     """
-    management_service = self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService').concrete_cls(
-      VirtualSystemManagementService)
+    management_service = VirtualSystemManagementService(self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService'))
     class_instance = self.traverse(self.PATH_MAP[class_name])[0][-1]
     for property_name, property_value in properties.items():
       setattr(class_instance.properties, property_name, property_value)
@@ -340,8 +359,7 @@ class VirtualMachine(ManagementObject):
     :param adapter_name: adapter name
     :return: created adapter
     """
-    management_service = self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService').concrete_cls(
-      VirtualSystemManagementService)
+    management_service = VirtualSystemManagementService(self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService'))
     Msvm_ResourcePool = self.Scope.query_one(
       "SELECT * FROM Msvm_ResourcePool WHERE ResourceSubType = 'Microsoft:Hyper-V:Synthetic Ethernet Port' "
       "AND Primordial = True"
@@ -361,7 +379,7 @@ class VirtualMachine(ManagementObject):
       Msvm_SyntheticEthernetPortSettingData.properties.Address = mac
     result = management_service.AddResourceSettings(Msvm_VirtualSystemSettingData,
                                                     Msvm_SyntheticEthernetPortSettingData)
-    return result['ResultingResourceSettings'][-1].concrete_cls(VirtualNetworkAdapter)
+    return VirtualNetworkAdapter(result['ResultingResourceSettings'][-1])
 
   def is_connected_to_switch(self, virtual_switch: 'VirtualSwitch'):
     """
@@ -381,8 +399,7 @@ class VirtualMachine(ManagementObject):
     :param vhd_disk: ``VHDDisk`` to add to machine
     """
     # TODO ability to select controller, disk port, error checking. Make disk bootable by default, etc
-    management_service = self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService').concrete_cls(
-      VirtualSystemManagementService)
+    management_service = VirtualSystemManagementService(self.Scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService'))
     Msvm_VirtualSystemSettingData = self.get_child((VirtualSystemSettingDataNode,))
     Msvm_ResourcePool_SyntheticDiskDrive = self.Scope.query_one(
       "SELECT * FROM Msvm_ResourcePool WHERE ResourceSubType = 'Microsoft:Hyper-V:Synthetic Disk Drive' AND Primordial = True")
@@ -430,8 +447,8 @@ class VirtualMachine(ManagementObject):
       VirtualSystemSettingDataNode,
       RelatedNode(("Msvm_SyntheticEthernetPortSettingData",))
     )
-    for _, seps in self.traverse(port_to_switch_path):
-      result.append(seps.concrete_cls(VirtualNetworkAdapter))
+    for _, Msvm_SyntheticEthernetPortSettingData in self.traverse(port_to_switch_path):
+      result.append(VirtualNetworkAdapter(Msvm_SyntheticEthernetPortSettingData))
     return result
 
   @property
@@ -448,8 +465,8 @@ class VirtualMachine(ManagementObject):
                   selector=PropertiesSelector(ResourceSubtype="Microsoft:Hyper-V:Serial Controller")),
       RelatedNode(("Msvm_SerialPortSettingData",))
     )
-    for _, _, com_port in self.traverse(com_ports_path):
-      result.append(com_port.concrete_cls(VirtualComPort))
+    for _, _, Msvm_SerialPortSettingData in self.traverse(com_ports_path):
+      result.append(VirtualComPort(Msvm_SerialPortSettingData))
     return result
 
   def get_com_port(self, port: ComPort):
@@ -472,11 +489,10 @@ class VirtualMachine(ManagementObject):
   def _get_shutdown_component(self):
     shutdown_component_traverse_result = self.traverse((RelatedNode(("Msvm_ShutdownComponent",)),))
     if shutdown_component_traverse_result:
-      shutdown_component = shutdown_component_traverse_result[-1][-1]
-      operational_status = ShutdownComponent_OperationalStatus.from_code(
-        shutdown_component.properties['OperationalStatus'][0])
+      Msvm_ShutdownComponent = shutdown_component_traverse_result[-1][-1]
+      operational_status = ShutdownComponent_OperationalStatus.from_code(Msvm_ShutdownComponent.properties['OperationalStatus'][0])
       if operational_status in (ShutdownComponent_OperationalStatus.OK, ShutdownComponent_OperationalStatus.Degraded):
-        return shutdown_component.concrete_cls(ShutdownComponent)
+        return ShutdownComponent(Msvm_ShutdownComponent)
     return None
 
   @property
@@ -508,39 +524,52 @@ class HypervHost(object):
   @property
   def switches(self) -> List[VirtualSwitch]:
     switches = self.scope.query('SELECT * FROM Msvm_VirtualEthernetSwitch')
-    return [_switch.concrete_cls(VirtualSwitch) for _switch in switches] if switches else []
+    return [VirtualSwitch(_switch) for _switch in switches] if switches else []
 
-  def switches_by_name(self, name) -> VirtualSwitch:
+  def switch_by_name(self, name) -> VirtualSwitch:
     switches = self.scope.query('SELECT * FROM Msvm_VirtualEthernetSwitch WHERE ElementName = "%s"' % name)
-    return [_switch.concrete_cls(VirtualSwitch) for _switch in switches] if switches else []
+    if len(switches) == 0:
+      raise NotFoundException("No switch with name {0}".format(name))
+    if len(switches) > 1:
+      raise TooManyResultsException("Too many switches with name {0}".format(name))
+    return VirtualSwitch(switches[-1])
 
   def switch_by_id(self, switch_id) -> VirtualSwitch:
     switches = self.scope.query('SELECT * FROM Msvm_VirtualEthernetSwitch WHERE Name = "%s"' % switch_id)
-    return [_switch.concrete_cls(VirtualSwitch) for _switch in switches] if switches else []
+    if len(switches) == 0:
+      raise NotFoundException("No switch with id {0}".format(switch_id))
+    if len(switches) > 1:
+      raise TooManyResultsException("Too many switches with id {0}".format(switch_id))
+    return VirtualSwitch(switches[-1])
 
   @property
   def machines(self) -> List[VirtualMachine]:
     machines = self.scope.query('SELECT * FROM Msvm_ComputerSystem WHERE Caption = "Virtual Machine"')
-    return [_machine.concrete_cls(VirtualMachine) for _machine in machines] if machines else []
+    return [VirtualMachine(_machine) for _machine in machines] if machines else []
 
-  def machines_by_name(self, name) -> List[VirtualMachine]:
-    machines = self.scope.query(
-      'SELECT * FROM Msvm_ComputerSystem WHERE Caption = "Virtual Machine" AND ElementName = "%s"' % name)
-    return [_machine.concrete_cls(VirtualMachine) for _machine in machines] if machines else []
+  def machine_by_name(self, name) -> VirtualMachine:
+    machines = self.scope.query('SELECT * FROM Msvm_ComputerSystem WHERE Caption = "Virtual Machine" AND ElementName = "%s"' % name)
+    if len(machines) == 0:
+      raise NotFoundException("No machine with name {0}".format(name))
+    if len(machines) > 1:
+      raise TooManyResultsException("Too many machines with name {0}".format(name))
+    return VirtualMachine(machines[-1])
 
   def machine_by_id(self, machine_id) -> VirtualMachine:
-    machines = self.scope.query(
-      'SELECT * FROM Msvm_ComputerSystem WHERE Caption = "Virtual Machine" AND Name = "%s"' % machine_id)
-    return [_machine.concrete_cls(VirtualMachine) for _machine in machines] if machines else []
+    machines = self.scope.query('SELECT * FROM Msvm_ComputerSystem WHERE Caption = "Virtual Machine" AND Name = "%s"' % machine_id)
+    if len(machines) == 0:
+      raise NotFoundException("No machine with id {0}".format(machine_id))
+    if len(machines) > 1:
+      raise TooManyResultsException("Too many machines with id {0}".format(machine_id))
+    return VirtualMachine(machines[-1])
 
   def create_machine(self, name, properties_group: Dict[str, Dict[str, Any]] = None,
                      machine_generation: VirtualMachineGeneration = VirtualMachineGeneration.GEN1) -> VirtualMachine:
-    management_service = self.scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService').concrete_cls(
-      VirtualSystemManagementService)
+    management_service = VirtualSystemManagementService(self.scope.query_one('SELECT * FROM Msvm_VirtualSystemManagementService'))
     Msvm_VirtualSystemSettingData = self.scope.cls_instance("Msvm_VirtualSystemSettingData")
     Msvm_VirtualSystemSettingData.properties.ElementName = name
     Msvm_VirtualSystemSettingData.properties.VirtualSystemSubType = machine_generation.value
     result = management_service.DefineSystem(SystemSettings=Msvm_VirtualSystemSettingData)
-    vm = result['ResultingSystem'].concrete_cls(VirtualMachine)
+    vm = VirtualMachine(result['ResultingSystem'])
     vm.apply_properties_group(properties_group)
     return vm

@@ -112,10 +112,6 @@ class JobException(Exception):
     super().__init__(msg)
 
 
-class InvocationException(Exception):
-  pass
-
-
 class PropertiesHolder(object):
   def __init__(self, management_object):
     self.management_object = management_object
@@ -144,16 +140,9 @@ class PropertiesHolder(object):
 
 @opencls(ManagementObject)
 class ManagementObject(object):
-  def concrete_cls(self, cls):
-    if not issubclass(cls, ManagementObject):
-      raise ValueError("Class '{0}' is not and subclass of 'ManagementObject'".format(cls.__name__))
-    if hasattr(cls, "MO_CLS"):
-      mo_cls = getattr(cls, "MO_CLS")
-      if self.ClassPath.ClassName not in mo_cls:
-        raise ValueError('Given ManagementObject is not %s' % mo_cls)
-      return cls(self.Path)
-    else:
-      raise ValueError("Class '{0}' does not contain 'MO_CLS' record".format(cls.__name__))
+  def check_class(self, cls):
+    if self.ClassPath.ClassName not in cls:
+      raise ValueError('Given ManagementObject is not %s' % cls)
 
   def reload(self):
     self.Get()

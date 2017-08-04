@@ -232,3 +232,7 @@ class VSMS_AddResourceSettings_ReturnCode(RangedCodeEnum):
   Method_Parameters_Checked_Job_Started = 4096
   Method_Reserved = (4097, 32767)
   Vendor_Specific = (32768, 65535)
+
+
+class InvocationException(Exception):
+  pass

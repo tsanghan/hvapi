@@ -20,17 +20,17 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 from typing import Sequence
-
+from abc import ABCMeta, abstractmethod
 from hvapi.clr.imports import ManagementObject
 
 
-class PropertyTransformer(object):
+class PropertyTransformer(metaclass=ABCMeta):
   """
   Class that transforms property value to valid 'ManagementObject' instance. This need to be passed to 'PropertyNode' object.
   """
 
-  @staticmethod
-  def transform(property_value, parent: ManagementObject) -> ManagementObject:
+  @abstractmethod
+  def transform(self, property_value, parent: ManagementObject) -> ManagementObject:
     raise NotImplementedError
 
 
@@ -39,8 +39,7 @@ class NullTransformer(PropertyTransformer):
   Just returns value if it is 'ManagementObject' instance.
   """
 
-  @staticmethod
-  def transform(property_value, parent: ManagementObject) -> ManagementObject:
+  def transform(self, property_value, parent: ManagementObject) -> ManagementObject:
     if isinstance(property_value, ManagementObject):
       return property_value
     raise ValueError("Value is not an instance of 'ManagementObject'")
@@ -51,18 +50,18 @@ class ReferenceTransformer(PropertyTransformer):
   Transforms WMI reference value to 'ManagementObject' instance.
   """
 
-  @staticmethod
-  def transform(property_value, parent: ManagementObject) -> ManagementObject:
+  def transform(self, property_value, parent: ManagementObject) -> ManagementObject:
     return ManagementObject(property_value)
 
 
-class Selector(object):
+class Selector(metaclass=ABCMeta):
   """
   Checks if 'ManagementObject' is suitable for us during traversal.
   """
 
-  def is_acceptable(self, management_object: ManagementObject):
-    raise NotImplementedError
+  @abstractmethod
+  def is_acceptable(self, management_object: ManagementObject) -> bool:
+    return False
 
 
 class NullSelector(Selector):
@@ -70,7 +69,7 @@ class NullSelector(Selector):
   Selector that accepts all objects.
   """
 
-  def is_acceptable(self, management_object: ManagementObject):
+  def is_acceptable(self, management_object: ManagementObject) -> bool:
     return True
 
 
@@ -82,7 +81,7 @@ class PropertiesSelector(Selector):
   def __init__(self, **kwargs):
     self.properties = kwargs
 
-  def is_acceptable(self, management_object: ManagementObject):
+  def is_acceptable(self, management_object: ManagementObject) -> bool:
     for property_name, expected_value in self.properties:
       if str(management_object.properties[property_name]) != str(expected_value):
         return False

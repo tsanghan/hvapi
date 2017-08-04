@@ -30,6 +30,10 @@ from hvapi.clr.invoke import evaluate_invocation_result
 class JobWrapper(ManagementObject):
   MO_CLS = ('Msvm_ConcreteJob', 'Msvm_StorageJob')
 
+  def __init__(self, mo: ManagementObject):
+    self.check_class(self.MO_CLS)
+    self.Path = mo.Path
+
   def wait(self):
     job_state = Msvm_ConcreteJob_JobState.from_code(self.properties['JobState'])
     while job_state not in [Msvm_ConcreteJob_JobState.Completed, Msvm_ConcreteJob_JobState.Terminated,
@@ -43,6 +47,10 @@ class JobWrapper(ManagementObject):
 
 class VirtualSystemManagementService(ManagementObject):
   MO_CLS = 'Msvm_VirtualSystemManagementService'
+
+  def __init__(self, mo: ManagementObject):
+    self.check_class(self.MO_CLS)
+    self.Path = mo.Path
 
   def SetGuestNetworkAdapterConfiguration(self, ComputerSystem, *args):
     out_objects = self.invoke("SetGuestNetworkAdapterConfiguration", ComputerSystem=ComputerSystem,
