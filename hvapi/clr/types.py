@@ -1,7 +1,28 @@
+# The MIT License
+#
+# Copyright (c) 2017 Eugene Chekanskiy, echekanskiy@gmail.com
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
 from enum import Enum
 
-from hvapi.common_types import RangedCodeEnum
 from hvapi.types import VirtualMachineState
+from hvapi.common import RangedCodeEnum
 
 
 class Msvm_ConcreteJob_JobState(RangedCodeEnum):
@@ -213,21 +234,5 @@ class VSMS_AddResourceSettings_ReturnCode(RangedCodeEnum):
   Vendor_Specific = (32768, 65535)
 
 
-class MIMS_GetVirtualHardDiskSettingData_ReturnCode(RangedCodeEnum):
-  """
-  Msvm_ImageManagementService GetVirtualHardDiskSettingData method return codes.
-  """
-  Completed_with_No_Error = 0
-  Method_Parameters_Checked_Job_Started = 4096
-  Failed = 32768
-  Access_Denied = 32769
-  Not_Supported = 32770
-  Status_is_unknown = 32771
-  Timeout = 32772
-  Invalid_parameter = 32773
-  System_is_in_use = 32774
-  Invalid_state_for_this_operation = 2775
-  Incorrect_data_type = 32776
-  System_is_not_available = 32777
-  Out_of_memory = 32778
-  File_not_found = 32779
+class InvocationException(Exception):
+  pass

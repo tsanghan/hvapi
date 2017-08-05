@@ -1,20 +1,32 @@
-import clr
+# The MIT License
+#
+# Copyright (c) 2017 Eugene Chekanskiy, echekanskiy@gmail.com
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
 import collections
-import xml.etree.ElementTree as ET
-from enum import Enum
-from typing import Tuple, Callable, Iterable, Union, List, Any, Sized
+from typing import List, Sequence
 
-from hvapi.common_types import RangedCodeEnum
-
-clr.AddReference("System.Management")
-from System.Management import ManagementScope, ObjectQuery, ManagementObjectSearcher, ManagementObject, CimType, \
-  ManagementException, ManagementClass
-from System import Array, String, Guid
-
-# WARNING, clr_Array accepts iterable, e.g. ig you will pass string - it will be array of its chars, not array of one
-# string. clr_Array[clr_String](["hello"]) equals to array with one "hello" string in it
-clr_Array = Array
-clr_String = String
+from hvapi.clr.imports import Guid, CimType, String, ManagementScope, ObjectQuery, ManagementObjectSearcher, \
+  ManagementClass, ManagementException, ManagementObject, Array
+from hvapi.clr.invoke import transform_argument
+from hvapi.clr.traversal import Node, recursive_traverse
+from hvapi.common import opencls
 
 
 def generate_guid(fmt="B"):
@@ -47,113 +59,41 @@ class CimTypeTransformer(object):
     raise Exception("unknown type")
 
 
-class MOHTransformers(object):
-  @staticmethod
-  def from_reference(object_reference, parent: 'ManagementObjectHolder') -> 'ManagementObjectHolder':
-    return ManagementObjectHolder(ManagementObject(object_reference), parent, parent.scope_holder)
+@opencls(ManagementScope)
+class ManagementScope(object):
+  def query(self, query, parent=None) -> List['ManagementObject']:
+    result = []
+    query_obj = ObjectQuery(query)
+    searcher = ManagementObjectSearcher(self, query_obj)
+    for man_object in searcher.Get():
+      result.append(man_object)
+    return result
 
-  @staticmethod
-  def from_xml(object_xml, parent: 'ManagementObjectHolder') -> 'ManagementObjectHolder':
-    root = ET.fromstring(object_xml)
-    class_name = root.attrib['CLASSNAME']
-    class_instance = parent.scope_holder.cls_instance(class_name)
-    for property_element in root.findall('PROPERTY'):
-      property_name = property_element.attrib['NAME']
-      property_type = property_element.attrib['TYPE']
-      property_value = None
-      value_element = property_element.find('VALUE')
-      if value_element is not None:
-        property_value = value_element.text
-      class_instance.management_object.Properties[property_name].Value = property_value
-    return class_instance
+  def query_one(self, query) -> 'ManagementObject':
+    result = self.query(query)
+    if len(result) > 1:
+      raise Exception("Got too many results for query '%s'" % query)
+    if result:
+      return result[0]
 
-
-class Relation(int, Enum):
-  RELATED = 0
-  RELATIONSHIP = 1
-  PROPERTY = 2
-
-
-class Property(int, Enum):
-  ARRAY = 2
-  SINGLE = 3
-
-
-class Node(object):
-  """
-  Represents methods of traversing for WMI object hierarchy. Each Node correspondents >=0 ManagementObjects that somehow
-  related to given object. Relations can be represented as GetRelated, GetRelationships methods call results (from
-  ManagementObject) or as transformed ManagementObject reference grabbed form parent object property.
-  """
-
-  def __init__(
-      self,
-      relation_type: Relation,
-      path_args: Union[str, Tuple],
-      property_data: Tuple[Property, Callable[[Any, 'ManagementObjectHolder'], 'ManagementObjectHolder']] = None,
-      selector: Callable[['ManagementObjectHolder'], bool] = None
-  ):
-    """
-    Constructs node. ``property_data`` contains from property type(array, or single property), and callable to transform
-    property data to ManagementObject. ``selector`` is a callable that used to filter out unnecessary nodes, it will
-    retrieve ManagementObject instance and need return True if this ManagementObject meets our requirements.
-
-    :param relation_type: type of relation
-    :param path_args: arguments to be passed to GetRelated, GetRelationships, or string for Relation.PROPERTY
-    :param property_data: stuff related to Relation.PROPERTY
-    :param selector: callable, that must return True if object is ok for us
-    """
-    self.relation_type = relation_type
-
-    if not isinstance(path_args, (list, tuple)):
-      self.path_args = (path_args,)
-    else:
-      self.path_args = path_args
-
-    self.property_type = None
-    self.property_transformer = lambda x, y: x
-    if property_data:
-      self.property_type = property_data[0]
-      if len(property_data) == 2:
-        self.property_transformer = property_data[1]
-    self.selector = selector
-
-
-VirtualSystemSettingDataNode = Node(Relation.RELATED, (
-  "Msvm_VirtualSystemSettingData", "Msvm_SettingsDefineState", None, None, "SettingData", "ManagedElement", False,
-  None))
-
-
-def PropertySelector(property_name, expected_value):
-  def _sel(obj):
-    return obj.properties[property_name] == expected_value
-
-  return _sel
-
-
-def ListPropertySelector(properties):
-  def _sel(obj):
-    for property_name, expected_value in properties:
-      if str(obj.properties[property_name]) != str(expected_value):
-        return False
-    return True
-
-  return _sel
+  def cls_instance(self, class_name):
+    cls = ManagementClass(str(self.Path) + ":" + class_name)
+    return cls.CreateInstance()
 
 
 class ScopeHolder(object):
   def __init__(self, namespace=r"\\.\root\virtualization\v2"):
     self.scope = ManagementScope(namespace)
 
-  def query(self, query, parent=None) -> List['ManagementObjectHolder']:
+  def query(self, query, parent=None) -> List['ManagementObject']:
     result = []
     query_obj = ObjectQuery(query)
     searcher = ManagementObjectSearcher(self.scope, query_obj)
     for man_object in searcher.Get():
-      result.append(ManagementObjectHolder(man_object, parent, self))
+      result.append(man_object)
     return result
 
-  def query_one(self, query) -> 'ManagementObjectHolder':
+  def query_one(self, query) -> 'ManagementObject':
     result = self.query(query)
     if len(result) > 1:
       raise Exception("Got too many results for query '%s'" % query)
@@ -162,7 +102,7 @@ class ScopeHolder(object):
 
   def cls_instance(self, class_name):
     cls = ManagementClass(str(self.scope.Path) + ":" + class_name)
-    return ManagementObjectHolder(cls.CreateInstance(), None, self)
+    return cls.CreateInstance()
 
 
 class JobException(Exception):
@@ -170,10 +110,6 @@ class JobException(Exception):
     msg = "Job code:'%s' status:'%s' description:'%s'" % (
       job.properties.ErrorCode, job.properties.JobStatus, job.properties.ErrorDescription)
     super().__init__(msg)
-
-
-class InvocationException(Exception):
-  pass
 
 
 class PropertiesHolder(object):
@@ -202,27 +138,27 @@ class PropertiesHolder(object):
     return self.management_object.Properties[item].Value
 
 
-class ManagementObjectHolder(object):
-  def __init__(self, management_object, parent, scope_holder: ScopeHolder):
-    self.scope_holder = scope_holder
-    self.management_object = management_object
-    self.parent = parent
+@opencls(ManagementObject)
+class ManagementObject(object):
+  def check_class(self, cls):
+    if self.ClassPath.ClassName not in cls:
+      raise ValueError('Given ManagementObject is not %s' % str(cls))
 
   def reload(self):
-    self.management_object.Get()
+    self.Get()
 
   @property
   def properties(self):
-    return PropertiesHolder(self.management_object)
+    return PropertiesHolder(self)
 
   @property
   def properties_dict(self):
     result = {}
-    for _property in self.management_object.Properties:
+    for _property in self.Properties:
       result[_property.Name] = _property.Value
     return result
 
-  def traverse(self, traverse_path: Iterable[Node]) -> List[List['ManagementObjectHolder']]:
+  def traverse(self, traverse_path: Sequence[Node]) -> List[List[ManagementObject]]:
     """
     Traverse through management object hierarchy based on given path.
     Return all found path from given object to target object.
@@ -230,9 +166,9 @@ class ManagementObjectHolder(object):
     :param traverse_path:
     :return: list of found paths
     """
-    return self._internal_traversal(traverse_path, self)
+    return recursive_traverse(traverse_path, self)
 
-  def get_child(self, traverse_path: Iterable[Node]):
+  def get_child(self, traverse_path: Sequence[Node]) -> ManagementObject:
     """
     Get one child item from given path.
 
@@ -245,7 +181,7 @@ class ManagementObjectHolder(object):
     return traverse_result[-1][-1]
 
   def invoke(self, method_name, **kwargs):
-    parameters = self.management_object.GetMethodParameters(method_name)
+    parameters = self.GetMethodParameters(method_name)
     for parameter in parameters.Properties:
       parameter_name = parameter.Name
       parameter_type = CimTypeTransformer.target_class(parameter.Type)
@@ -256,157 +192,31 @@ class ManagementObjectHolder(object):
       if parameter.IsArray:
         if not isinstance(kwargs[parameter_name], collections.Iterable):
           raise ValueError("Parameter '%s' must be iterable" % parameter_name)
-        array_items = [self._transform_object(item, parameter_type) for item in kwargs[parameter_name]]
+        array_items = [transform_argument(item, parameter_type) for item in kwargs[parameter_name]]
         if array_items:
           parameter_value = Array[parameter_type](array_items)
         else:
           parameter_value = None
       else:
-        parameter_value = self._transform_object(kwargs[parameter_name], parameter_type)
+        parameter_value = transform_argument(kwargs[parameter_name], parameter_type)
 
       parameters.Properties[parameter_name].Value = parameter_value
 
-    invocation_result = self.management_object.InvokeMethod(method_name, parameters, None)
+    invocation_result = self.InvokeMethod(method_name, parameters, None)
     transformed_result = {}
     for _property in invocation_result.Properties:
       _property_type = CimTypeTransformer.target_class(_property.Type)
       _property_value = None
       if _property.Value is not None:
         if _property.IsArray:
-          _property_value = [self._transform_object(item, _property_type) for item in _property.Value]
+          _property_value = [transform_argument(item, _property_type) for item in _property.Value]
         else:
-          _property_value = self._transform_object(_property.Value, _property_type)
+          _property_value = transform_argument(_property.Value, _property_type)
       transformed_result[_property.Name] = _property_value
     return transformed_result
 
   def clone(self):
-    return ManagementObjectHolder(self.management_object.Clone(), self.scope_holder)
+    return self.Clone()
 
   def __str__(self):
-    return str(self.management_object)
-
-  def _transform_object(self, obj, expected_type=None):
-    if obj is None:
-      return None
-
-    if isinstance(obj, ManagementObjectHolder):
-      obj = obj.management_object
-
-    if isinstance(obj, ManagementObject):
-      if expected_type == String:
-        return String(obj.GetText(2))
-      if expected_type == ManagementObject:
-        return obj
-      raise ValueError("Object '%s' can not be transformed to '%s'" % (obj, expected_type))
-
-    if isinstance(obj, (String, str)):
-      if expected_type == ManagementObject:
-        return MOHTransformers.from_reference(obj, self)
-
-    if isinstance(obj, int):
-      if expected_type == int:
-        return obj
-
-    if isinstance(obj, bool):
-      if expected_type == bool:
-        return obj
-
-    if isinstance(obj, (str, String)):
-      if expected_type == String:
-        return String(obj)
-
-    raise Exception("Unknown object to transform: '%s'" % obj)
-
-  @staticmethod
-  def _get_node_objects(parent_object: 'ManagementObjectHolder', node: 'Node'):
-    results = []
-    if node.relation_type == Relation.PROPERTY:
-      val = parent_object.management_object.Properties[node.path_args[0]].Value
-      if node.property_type == Property.SINGLE:
-        _result = node.property_transformer(val, parent_object)
-        if node.selector:
-          if node.selector(_result):
-            results.append(_result)
-        else:
-          results.append(_result)
-      elif node.property_type == Property.ARRAY:
-        for val_item in val:
-          _result = node.property_transformer(val_item, parent_object)
-          if node.selector:
-            if node.selector(_result):
-              results.append(_result)
-          else:
-            results.append(_result)
-      else:
-        raise Exception("Unknown property type")
-      return results
-    elif node.relation_type == Relation.RELATED:
-      for rel_object in parent_object.management_object.GetRelated(*node.path_args):
-        if not parent_object.management_object == rel_object:
-          _result = ManagementObjectHolder(rel_object, parent_object, parent_object.scope_holder)
-          if node.selector:
-            if node.selector(_result):
-              results.append(_result)
-          else:
-            results.append(_result)
-      return results
-    elif node.relation_type == Relation.RELATIONSHIP:
-      for rel_object in parent_object.management_object.GetRelationships(*node.path_args):
-        if not parent_object.management_object == rel_object:
-          _result = ManagementObjectHolder(rel_object, parent_object.scope_holder)
-          if node.selector:
-            if node.selector(_result):
-              results.append(_result)
-          else:
-            results.append(_result)
-      return results
-    else:
-      raise Exception("Unknown path part type")
-
-  @classmethod
-  def _internal_traversal(cls, traverse_path: Union[Sized, Iterable[Node]], parent: 'ManagementObjectHolder'):
-    results = []
-    if len(traverse_path) == 1:
-      for obj in cls._get_node_objects(parent, traverse_path[0]):
-        results.append([obj])
-      return results
-    else:
-      for obj in cls._get_node_objects(parent, traverse_path[0]):
-        for children in cls._internal_traversal(traverse_path[1:], obj):
-          cur_res = [obj]
-          cur_res.extend(children)
-          results.append(cur_res)
-      return results
-
-  @staticmethod
-  def _evaluate_invocation_result(result, codes_enum: RangedCodeEnum, ok_value, job_value):
-    return_value = codes_enum.from_code(result['ReturnValue'])
-    if return_value == job_value:
-      from hvapi.clr.classes_wrappers import JobWrapper
-      JobWrapper.from_moh(result['Job']).wait()
-      return result
-    if return_value != ok_value:
-      raise InvocationException("Failed execute method with return value '%s'" % return_value.name)
-    return result
-
-  @staticmethod
-  def _create_cls_from_moh(cls, cls_name: str, moh: 'ManagementObjectHolder', parent_moh: 'ManagementObjectHolder'):
-    if not parent_moh:
-      parent_moh = moh.parent
-    if moh.management_object.ClassPath.ClassName not in cls_name:
-      raise ValueError('Given ManagementObject is not %s' % cls_name)
-    return cls(moh.management_object, parent_moh, moh.scope_holder)
-
-  @classmethod
-  def from_moh(cls, moh: 'ManagementObjectHolder', parent_moh: 'ManagementObjectHolder'):
-    """
-    Create concrete class instance from given ManagementObjectHolder. parent_moh can be provided by concrete class to
-    bypass all hierarchy. For example, Msvm_SyntheticEthernetPortSettingData goes through Msvm_VirtualSystemSettingData
-    to Msvm_ComputerSystem, but VirtualMachine class sets itself as parent_moh for VirtualNetworkAdapter class, thus its
-    skips Msvm_VirtualSystemSettingData.
-
-    :param moh: moh object that used to create concrete class
-    :param parent_moh: parent moh object
-    :return: concrete moh instance
-    """
-    raise NotImplementedError
+    return str(self)

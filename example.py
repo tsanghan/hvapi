@@ -25,16 +25,14 @@ THE SOFTWARE.
 import logging
 from hvapi.hyperv import HypervHost
 
-
-
 FORMAT = "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
 logging.basicConfig(format=FORMAT, level=logging.DEBUG)
 
 host = HypervHost()
-machine = host.machines_by_name("centos6")[-1]
+machine = host.machine_by_name("centos7")
 adapters = machine.network_adapters
 for adapter in adapters:
-    switch = adapter.switch
-    res = adapter.guest_settings().dhcp = True
-    pass
-
+  switch = adapter.switch
+  guest_settings = adapter.guest_settings()
+  guest_settings.dhcp = False
+  pass
