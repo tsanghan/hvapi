@@ -24,7 +24,7 @@ import time
 from typing import List, Dict, Any
 
 from hvapi._private import VirtualSystemManagementService, MOWrapper
-from hvapi.clr.base import ScopeHolder, generate_guid
+from hvapi.clr.base import generate_guid, ManagementScope
 from hvapi.clr.imports import clr_Array, clr_String
 from hvapi.clr.invoke import evaluate_invocation_result
 from hvapi.clr.traversal import ReferenceTransformer, PropertiesSelector, PropertyNode, RelatedNode, RelationshipNode, \
@@ -494,10 +494,8 @@ class HypervHost(object):
   Provides basic interface to get virtual machines, switches, and disk images for host.
   """
 
-  def __init__(self, scope=None):
-    self.scope = scope
-    if not self.scope:
-      self.scope = ScopeHolder()
+  def __init__(self, host="."):
+    self.scope = ManagementScope(r"\\{0}\root\virtualization\v2".format(host))
 
   @property
   def switches(self) -> List[VirtualSwitch]:

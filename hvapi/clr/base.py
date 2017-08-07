@@ -81,30 +81,6 @@ class ManagementScope(object):
     return cls.CreateInstance()
 
 
-class ScopeHolder(object):
-  def __init__(self, namespace=r"\\.\root\virtualization\v2"):
-    self.scope = ManagementScope(namespace)
-
-  def query(self, query, parent=None) -> List['ManagementObject']:
-    result = []
-    query_obj = ObjectQuery(query)
-    searcher = ManagementObjectSearcher(self.scope, query_obj)
-    for man_object in searcher.Get():
-      result.append(man_object)
-    return result
-
-  def query_one(self, query) -> 'ManagementObject':
-    result = self.query(query)
-    if len(result) > 1:
-      raise Exception("Got too many results for query '%s'" % query)
-    if result:
-      return result[0]
-
-  def cls_instance(self, class_name):
-    cls = ManagementClass(str(self.scope.Path) + ":" + class_name)
-    return cls.CreateInstance()
-
-
 class JobException(Exception):
   def __init__(self, job):
     msg = "Job code:'%s' status:'%s' description:'%s'" % (
@@ -137,6 +113,15 @@ class PropertiesHolder(object):
   def __getitem__(self, item):
     return self.management_object.Properties[item].Value
 
+  def __setitem__(self, key, value):
+    self.management_object.Properties[key].Value = value
+
+  def __repr__(self):
+    result = {}
+    for _property in self.management_object.Properties:
+      result[_property.Name] = _property.Value
+    return repr(result)
+
 
 @opencls(ManagementObject)
 class ManagementObject(object):
@@ -155,7 +140,7 @@ class ManagementObject(object):
   def properties_dict(self):
     result = {}
     for _property in self.Properties:
-      result[_property.Name] = _property.Value
+      result[_property.Name] |= _property.Value
     return result
 
   def traverse(self, traverse_path: Sequence[Node]) -> List[List[ManagementObject]]:
