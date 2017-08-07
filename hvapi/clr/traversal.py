@@ -82,7 +82,7 @@ class PropertiesSelector(Selector):
     self.properties = kwargs
 
   def is_acceptable(self, management_object: ManagementObject) -> bool:
-    for property_name, expected_value in self.properties:
+    for property_name, expected_value in self.properties.items():
       if str(management_object.properties[property_name]) != str(expected_value):
         return False
     return True
@@ -110,7 +110,7 @@ class PropertyNode(Node):
   def get_node_objects(self, management_object: ManagementObject):
     results = []
     val = management_object.Properties[self.property_name].Value
-    if not val.GetType().IsArray:
+    if not management_object.Properties[self.property_name].IsArray:
       _result = self.transformer.transform(val, management_object)
       if self.selector.is_acceptable(_result):
         results.append(_result)

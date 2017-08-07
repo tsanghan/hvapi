@@ -129,8 +129,8 @@ class VirtualNetworkAdapter(MOWrapper):
     )
     Msvm_EthernetPortAllocationSettingData = \
       Msvm_ResourcePool.traverse(Msvm_EthernetPortAllocationSettingData_Path)[-1][-1]
-    Msvm_EthernetPortAllocationSettingData.properties.Parent = self.management_object
-    Msvm_EthernetPortAllocationSettingData.properties.HostResource = [virtual_switch.management_object]
+    Msvm_EthernetPortAllocationSettingData.properties.Parent = self
+    Msvm_EthernetPortAllocationSettingData.properties.HostResource = [virtual_switch]
     management_service.AddResourceSettings(Msvm_VirtualSystemSettingData, Msvm_EthernetPortAllocationSettingData)
 
 
@@ -165,7 +165,7 @@ class ShutdownComponent(MOWrapper):
       ShutdownComponent_ShutdownComponent_ReturnCodes.Method_Parameters_Checked_JobStarted
     )
 
-
+# TODO expose cpu, memory, etc settings via properties
 class VirtualMachine(MOWrapper):
   """
   Represents virtual machine. Gives access to machine name and id, network adapters, gives ability to start,
@@ -214,8 +214,9 @@ class VirtualMachine(MOWrapper):
 
     :param properties_group: dict of classes and their properties
     """
-    for cls, properties in sorted(properties_group.items(), key=lambda itm: self._CLS_MAP_PRIORITY.get(itm[0], 100)):
-      self.apply_properties(cls, properties)
+    if properties_group:
+      for cls, properties in sorted(properties_group.items(), key=lambda itm: self._CLS_MAP_PRIORITY.get(itm[0], 100)):
+        self.apply_properties(cls, properties)
 
   @property
   def name(self) -> str:
@@ -395,7 +396,7 @@ class VirtualMachine(MOWrapper):
     Msvm_StorageAllocationSettingData = Msvm_ResourcePool_SyntheticDiskDrive.get_child(
       Msvm_StorageAllocationSettingData_Path).clone()
 
-    Msvm_StorageAllocationSettingData.properties.Parent = IdeController.management_object
+    Msvm_StorageAllocationSettingData.properties.Parent = IdeController
     Msvm_StorageAllocationSettingData.properties.AddressOnParent = 0
     synthetic_disk_drive = \
       management_service.AddResourceSettings(Msvm_VirtualSystemSettingData, Msvm_StorageAllocationSettingData)[
@@ -409,7 +410,7 @@ class VirtualMachine(MOWrapper):
       PropertyNode("PartComponent", transformer=ReferenceTransformer())
     )
     virtual_hard_disk_data = Msvm_ResourcePool_VirtualHardDisk.get_child(virtual_hard_disk_path).clone()
-    virtual_hard_disk_data.properties.Parent = synthetic_disk_drive.management_object
+    virtual_hard_disk_data.properties.Parent = synthetic_disk_drive
     virtual_hard_disk_data.properties.HostResource = [vhd_disk.disk_path]
     management_service.AddResourceSettings(Msvm_VirtualSystemSettingData, virtual_hard_disk_data)
 

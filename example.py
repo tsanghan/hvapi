@@ -23,16 +23,51 @@ THE SOFTWARE.
 """
 
 import logging
+import uuid
+import os
 from hvapi.hyperv import HypervHost
+from hvapi.disk.vhd import VHDDisk, VirtualStorageType
 
 FORMAT = "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
 logging.basicConfig(format=FORMAT, level=logging.DEBUG)
 
+original_disk_path = r"C:\Users\evhenii\Desktop\centos7\centos7\Virtual Hard Disks\centos7.vhdx"
+original_disk = VHDDisk(original_disk_path)
+
+
+def clone_disk(disk: VHDDisk):
+  if disk.properties['VirtualStorageType'] == VirtualStorageType.VHDX:
+    clone_disk_path = os.path.join(os.path.dirname(original_disk_path), str(uuid.uuid4()) + ".vhdx")
+  else:
+    clone_disk_path = os.path.join(os.path.dirname(original_disk_path), str(uuid.uuid4()) + ".vhd")
+
+  return disk.clone(clone_disk_path)
+
+
+machines = [
+  ("c7.001", "192.168.55.101"),
+  ("c7.002", "192.168.55.102"),
+  ("c7.003", "192.168.55.103")
+]
+default_configuration = {
+  "Msvm_ProcessorSettingData": {
+    "VirtualQuantity": 3
+  },
+  "Msvm_VirtualSystemSettingData": {
+    "VirtualNumaEnabled": False
+  },
+  "Msvm_MemorySettingData": {
+    "DynamicMemoryEnabled": True,
+    "Reservation": 256,
+    "VirtualQuantity": 2048,
+    "Limit": 8096
+  }
+}
 host = HypervHost()
-machine = host.machine_by_name("centos6")
-adapters = machine.network_adapters
-for adapter in adapters:
-  switch = adapter.switch
-  guest_settings = adapter.guest_settings()
-  repr(guest_settings.properties)
-  pass
+switch = host.switch_by_name("internal")
+for name, ip in machines:
+  vm = host.create_machine(name, default_configuration)
+  adapter = vm.add_adapter()
+  adapter.connect(switch)
+  adapter.guest_settings().set_ip_settings(False, [ip], ["255.255.255.0"], ["192.168.55.1"], ["8.8.8.8"])
+  vm.add_vhd_disk(clone_disk(original_disk))
