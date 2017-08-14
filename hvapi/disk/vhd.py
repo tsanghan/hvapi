@@ -50,7 +50,6 @@ def transform_property(member_name, value):
 class VHDDisk(object):
   def __init__(self, disk_path):
     self.disk_path = disk_path
-    _ = self.properties
 
   @property
   def properties(self):
