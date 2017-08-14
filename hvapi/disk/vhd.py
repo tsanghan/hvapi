@@ -50,7 +50,7 @@ def transform_property(member_name, value):
 class VHDDisk(object):
   def __init__(self, disk_path):
     self.disk_path = disk_path
-    close_handle(open_vhd(self.disk_path))
+    _ = self.properties
 
   @property
   def properties(self):
@@ -69,16 +69,3 @@ class VHDDisk(object):
     else:
       close_handle(create_vhd(clone_path, src_path=self.disk_path))
     return VHDDisk(clone_path)
-
-
-# _create_vhd(r"F:\hyper-v-disks\centos6.8-clone2.vhdx", parent_path=r"F:\hyper-v-disks\centos6.8.vhdx")
-# res = open_vhd()
-# disk = VHDDisk("F:/hyper-v-disks/New Virtual Hard Disk - Copy.vhdx")
-# print(disk.properties)
-# clone_of_clone = disk.clone("F:/hyper-v-disks/helloworld.vhdx", differencing=False)
-# print(clone_of_clone.properties)
-""
-"""
-guid to string
-sprintf(szGuid, "{}", guid.Data1, guid.Data2, guid.Data3, guid.Data4[0], guid.Data4[1], guid.Data4[2], guid.Data4[3], guid.Data4[4], guid.Data4[5], guid.Data4[6], guid.Data4[7]);
-"""
