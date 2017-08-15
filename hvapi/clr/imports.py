@@ -20,9 +20,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 import clr
+from System.Reflection import Assembly
+
+Assembly.LoadWithPartialName("Microsoft.HyperV.PowerShell.Objects")
+Assembly.LoadWithPartialName("Microsoft.HyperV.PowerShell.Cmdlets")
 clr.AddReference("System.Management")
+
 from System.Management import ManagementScope, ObjectQuery, ManagementObjectSearcher, ManagementObject, CimType, ManagementException, ManagementClass
 from System import Array, String, Guid
+from System.Management.Automation import PowerShell, PSObject
 # WARNING, clr_Array accepts iterable, e.g. if you will pass string - it will be array of its chars, not array of one
 # string. clr_Array[clr_String](["hello"]) equals to array with one "hello" string in it
 clr_Array = Array
@@ -38,3 +44,5 @@ ManagementClass = ManagementClass
 Array = Array
 String = String
 Guid = Guid
+PowerShell = PowerShell
+PSObject = PSObject
