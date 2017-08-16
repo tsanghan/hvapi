@@ -6,7 +6,7 @@ if sys.version_info < (3, 5):
 
 setup(
   name='hvapi',
-  version='0.1',
+  version='0.2',
   description='Hyper-V python library.',
   author='Eugene Chekanskiy',
   author_email='echekanskiy@gmail.com',

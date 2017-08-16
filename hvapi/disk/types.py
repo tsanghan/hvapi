@@ -19,21 +19,19 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
-from hvapi.common import RangedCodeEnum
+from enum import Enum
 
 
-class VHDException(Exception):
-  pass
-
-
-class ProviderSubtype(RangedCodeEnum):
+class VHDType(int, Enum):
   FIXED = 2
   DYNAMIC = 3
   DIFFERENCING = 4
+  UNKNOWN = 0
 
 
-class VirtualStorageType(RangedCodeEnum):
+class VHDFormat(int, Enum):
   UNKNOWN = 0
   ISO = 1
   VHD = 2
   VHDX = 3
+  VHDSet = 4

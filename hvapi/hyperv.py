@@ -411,7 +411,7 @@ class VirtualMachine(MOWrapper):
     )
     virtual_hard_disk_data = Msvm_ResourcePool_VirtualHardDisk.get_child(virtual_hard_disk_path).clone()
     virtual_hard_disk_data.properties.Parent = synthetic_disk_drive
-    virtual_hard_disk_data.properties.HostResource = [vhd_disk.disk_path]
+    virtual_hard_disk_data.properties.HostResource = [vhd_disk.Path]
     management_service.AddResourceSettings(Msvm_VirtualSystemSettingData, virtual_hard_disk_data)
 
   @property

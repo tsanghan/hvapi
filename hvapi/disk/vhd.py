@@ -19,41 +19,88 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
-from hvapi.disk.internal import open_vhd, get_vhd_info, GUID, create_vhd, close_handle
-from hvapi.disk.types import ProviderSubtype, VirtualStorageType, VHDException
+from typing import Union
 
+from hvapi.clr.powershell import execute_cmdlet
+from hvapi.common import opencls
+from hvapi.disk.types import VHDType, VHDFormat
 
-def transform_property(member_name, value):
-  """
-  Transforms underlying structures and types from GET_VIRTUAL_DISK_INFO to something human-readable.
-
-  :param member_name:
-  :param value:
-  :return:
-  """
-  if member_name == 'ProviderSubtype':
-    return ProviderSubtype.from_code(value)
-  elif member_name == 'VirtualStorageType':
-    return VirtualStorageType.from_code(value.DeviceId)
-  elif member_name in ('IsLoaded', 'Enabled', 'IsRemote', 'ParentResolved', 'Is4kAligned', 'NewerChanges'):
-    return bool(value)
-  elif isinstance(value, GUID):
-    return str(value)
-  elif hasattr(value, "_fields_"):
-    result = {}
-    for field_name, _ in value._fields_:
-      result[field_name] = transform_property(field_name, getattr(value, field_name))
-    return result
-  return value
+from Microsoft.Vhd.PowerShell import VirtualHardDisk as _VirtualHardDisk
 
 
 class VHDDisk(object):
-  def __init__(self, disk_path):
-    self.disk_path = disk_path
+  def __init__(self, disk_path=None, vhd=None):
+    if not disk_path:
+      if not vhd:
+        raise Exception("VHD object or VHD path must be specified")
+      else:
+        self.vhd = vhd
+    else:
+      self.vhd = execute_cmdlet[_VirtualHardDisk]("Get-VHD", Path=disk_path)[-1]
 
   @property
-  def properties(self):
-    return {name: transform_property(name, value) for name, value in get_vhd_info(self.disk_path).items()}
+  def Alignment(self) -> int:
+    return self.vhd.Alignment
+
+  @property
+  def Attached(self) -> bool:
+    return self.vhd.Attached
+
+  @property
+  def BlockSize(self) -> int:
+    return self.vhd.BlockSize
+
+  @property
+  def ComputerName(self) -> str:
+    return self.vhd.ComputerName
+
+  @property
+  def DiskIdentifier(self) -> str:
+    return self.vhd.DiskIdentifier
+
+  @property
+  def DiskNumber(self) -> Union[int, type(None)]:
+    return self.vhd.DiskNumber
+
+  @property
+  def FileSize(self) -> int:
+    return self.vhd.FileSize
+
+  @property
+  def FragmentationPercentage(self) -> Union[int, type(None)]:
+    return self.vhd.FragmentationPercentage
+
+  @property
+  def LogicalSectorSize(self) -> int:
+    return self.vhd.LogicalSectorSize
+
+  @property
+  def MinimumSize(self) -> Union[int, type(None)]:
+    return self.vhd.MinimumSize
+
+  @property
+  def ParentPath(self) -> str:
+    return self.vhd.ParentPath
+
+  @property
+  def Path(self) -> str:
+    return self.vhd.Path
+
+  @property
+  def PhysicalSectorSize(self) -> int:
+    return self.vhd.PhysicalSectorSize
+
+  @property
+  def Size(self) -> int:
+    return self.vhd.Size
+
+  @property
+  def VhdFormat(self) -> VHDFormat:
+    return VHDFormat(self.vhd.VhdFormat)
+
+  @property
+  def VhdType(self) -> VHDType:
+    return VHDType(self.vhd.VhdType)
 
   def clone(self, clone_path, differencing=True):
     """
@@ -64,7 +111,8 @@ class VHDDisk(object):
     :return: resulting VHDDisk
     """
     if differencing:
-      close_handle(create_vhd(clone_path, parent_path=self.disk_path))
+      # New-VHD –ParentPath "C:\Users\evhenii\Desktop\centos7\centos7\Virtual Hard Disks\centos7.vhdx" –Path c:\Diff.vhdx - Differencing
+      return VHDDisk(vhd=execute_cmdlet[_VirtualHardDisk]("New-VHD", ParentPath=self.Path, Path=clone_path)[-1])
     else:
-      close_handle(create_vhd(clone_path, src_path=self.disk_path))
-    return VHDDisk(clone_path)
+      execute_cmdlet("Copy-Item", Path=self.Path, Destination=clone_path)
+      return VHDDisk(disk_path=clone_path)
